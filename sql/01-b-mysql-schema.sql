@@ -1,0 +1,7 @@
+-- 在 B 自己的数据库执行；不访问 Portal 用户表。
+CREATE TABLE IF NOT EXISTS demo_user (
+ sso_subject VARCHAR(128) PRIMARY KEY,
+ username VARCHAR(128) NOT NULL,
+ role VARCHAR(32) NOT NULL DEFAULT 'DEMO_USER',
+ enabled BOOLEAN NOT NULL DEFAULT TRUE
+);
