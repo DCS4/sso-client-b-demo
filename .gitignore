@@ -1,0 +1,78 @@
+## ide
+**/.idea
+*.iml
+rebel.xml
+
+## backend
+**/target
+**/logs
+
+# ===== Java / Build =====
+*.class
+*.log
+hs_err_pid*
+replay_pid*
+
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/wrapper/maven-wrapper.properties
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+gradle-app.setting
+
+# Package archives (通常不入库)
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# ===== Spring Boot 常见产物 =====
+# 可执行 jar/war 属于构建产物，CI/CD 产出，不建议入库
+# 如需暂时提交发布包，建议放 release 分支或单独制品库
+spring.log
+
+# ===== IDE / Editors =====
+# JetBrains / IntelliJ
+.idea/
+*.iml
+#.idea 下自动生成的内部 .gitignore 也不提交
+# 参考官方 JetBrains.gitignore
+# https://raw.githubusercontent.com/github/gitignore/master/Global/JetBrains.gitignore
+
+# VS Code
+.vscode/
+.history/
+*.code-workspace
+
+# ===== OS 垃圾文件 =====
+.DS_Store
+Thumbs.db
+
+# ===== Others =====
+# 本地环境配置（如果有）
+*.local.properties
+
+# 覆盖规则：如需强制跟踪某些库文件，取消注释
+#!lib/**/some.jar
+
+
+
+.work/
+.gitnexus/
+.omo/
+
+**/application.yml
+nul
+temp/**
+
+backend/target/
+frontend/node_modules/
+frontend/dist/
+
