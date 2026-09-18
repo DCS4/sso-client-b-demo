@@ -1,31 +1,38 @@
 package com.dcs4.ssoclient;
 
-import com.nimbusds.jwt.JWTClaimsSet;
-import java.util.*;
-import javax.servlet.http.*;
-import org.springframework.dao.DuplicateKeyException;
-import org.springframework.http.*;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.dcs4.ssoclient.PageAccessService.LogoutSummary;
+import com.dcs4.ssoclient.PageCatalog.Page;
+import com.dcs4.ssoclient.SsoModels.UserInfo;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.csrf.CsrfToken;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.web.util.UriComponentsBuilder;
 
+/** 演示页面所需的本地 API；所有 SSO 密钥和 Token 均不会返回给前端。 */
 @RestController
 public class DemoController {
+  private final PageAccessService access;
+  private final PageCatalog pages;
   private final SsoConfig config;
-  private final SsoClient client;
-  private final TokenVerifier verifier;
-  private final SessionStore store;
-  private final JdbcTemplate db;
 
-  public DemoController(
-      SsoConfig c, SsoClient s, TokenVerifier v, SessionStore st, JdbcTemplate d) {
-    config = c;
-    client = s;
-    verifier = v;
-    store = st;
-    db = d;
+  public DemoController(PageAccessService access, PageCatalog pages, SsoConfig config) {
+    this.access = access;
+    this.pages = pages;
+    this.config = config;
   }
 
   @GetMapping("/api/csrf")
@@ -33,183 +40,90 @@ public class DemoController {
     return Collections.singletonMap("token", token.getToken());
   }
 
-  @GetMapping("/api/auth/login")
-  public void login(HttpServletRequest req, HttpServletResponse res) throws Exception {
-    HttpSession s = req.getSession();
-    String state = Protocol.random(), v = Protocol.random();
-    s.setAttribute("state", state);
-    s.setAttribute("verifier", v);
-    s.setAttribute("started", System.currentTimeMillis());
-    res.sendRedirect(
-        UriComponentsBuilder.fromHttpUrl(config.baseUrl + "/authorize")
-            .queryParam("client_id", config.clientId)
-            .queryParam("redirect_uri", config.callback)
-            .queryParam("state", state)
-            .queryParam("code_challenge", Protocol.challenge(v))
-            .queryParam("code_challenge_method", "S256")
-            .build()
-            .encode()
-            .toUriString());
-  }
-
+  /**
+   * 所有页面共用的唯一固定回调。回调不渲染页面，只完成后端兑换后 303 回原页面。
+   */
   @GetMapping("/api/auth/callback")
-  public void callback(
-      @RequestParam String code,
-      @RequestParam String state,
-      HttpServletRequest req,
-      HttpServletResponse res)
-      throws Exception {
-    HttpSession s = req.getSession(false);
-    if (s == null) throw new IllegalArgumentException("登录事务不存在");
-    String v;
-    synchronized (s) {
-      Object expected = s.getAttribute("state"), started = s.getAttribute("started");
-      v = (String) s.getAttribute("verifier");
-      s.removeAttribute("state");
-      s.removeAttribute("verifier");
-      s.removeAttribute("started");
-      if (!state.equals(expected)
-          || started == null
-          || System.currentTimeMillis() - (Long) started > 600000
-          || v == null) throw new IllegalArgumentException("登录事务过期或 state 不匹配");
-    }
-    Map<String, String> body = new LinkedHashMap<>();
-    body.put("code", code);
-    body.put("redirect_uri", config.callback);
-    body.put("code_verifier", v);
-    JWTClaimsSet c = client.signed("/exchange", body, "identity_assertion", "identity", null);
-    store.once(c.getJWTID(), c.getExpirationTime().getTime() / 1000);
-    try {
-      db.update(
-          "INSERT INTO demo_user (sso_subject,username,role,enabled) VALUES (?,?,?,?)",
-          c.getSubject(),
-          c.getStringClaim("username"),
-          "DEMO_USER",
-          true);
-    } catch (DuplicateKeyException ignored) {
-    }
-    s.invalidate();
-    s = req.getSession(true);
-    s.setAttribute("sub", c.getSubject());
-    s.setAttribute("sid", c.getStringClaim("sid"));
-    s.setAttribute("expires", c.getLongClaim("session_expires_at"));
-    try {
-      user(req);
-      store.register(c.getStringClaim("sid"), s);
-    } catch (Exception e) {
-      try {
-        s.invalidate();
-      } catch (IllegalStateException ignored) {
-      }
-      throw e;
-    }
-    res.sendRedirect(config.returnUrl);
-  }
-
-  private Map<String, Object> user(HttpServletRequest req) {
-    HttpSession s = req.getSession(false);
-    if (s == null || s.getAttribute("sub") == null)
-      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "未登录");
-    if ((Long) s.getAttribute("expires") <= System.currentTimeMillis() / 1000) {
-      s.invalidate();
-      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "会话过期");
-    }
-    Map<String, Object> row =
-        db.queryForMap(
-            "SELECT sso_subject,username,role,enabled FROM demo_user WHERE sso_subject=?",
-            s.getAttribute("sub"));
-    if (!Boolean.TRUE.equals(row.get("enabled"))
-        && !(row.get("enabled") instanceof Number
-            && ((Number) row.get("enabled")).intValue() == 1)) {
-      s.invalidate();
-      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "本地用户禁用");
-    }
-    Map<String, Object> out = new LinkedHashMap<>();
-    out.put("sub", s.getAttribute("sub"));
-    out.put("username", row.get("username"));
-    out.put("role", row.get("role"));
-    out.put("sessionExpiresAt", s.getAttribute("expires"));
-    return out;
+  public ResponseEntity<Void> callback(
+      @RequestParam(name = "code", required = false) String code,
+      @RequestParam(name = "state", required = false) String state,
+      @RequestParam(name = "error", required = false) String error,
+      HttpServletRequest request) {
+    URI target = access.completeCallback(request, code, state, error);
+    return ResponseEntity.status(HttpStatus.SEE_OTHER).location(target).build();
   }
 
   @GetMapping("/api/auth/me")
-  public Map<String, Object> me(HttpServletRequest r) {
-    return user(r);
-  }
-
-  @GetMapping("/api/demo/business")
-  public Map<String, String> business(HttpServletRequest r) {
-    user(r);
-    return Collections.singletonMap("message", "普通业务接口调用成功");
-  }
-
-  @PostMapping("/api/demo/sensitive")
-  public Map<String, String> sensitive(HttpServletRequest r) throws Exception {
-    user(r);
-    String sid = (String) r.getSession(false).getAttribute("sid");
-    JWTClaimsSet c =
-        client.signed(
-            "/session/status",
-            Collections.singletonMap("sid", sid),
-            "session_status",
-            "status",
-            sid);
-    store.once(c.getJWTID(), c.getExpirationTime().getTime() / 1000);
-    if (!Boolean.TRUE.equals(c.getBooleanClaim("active"))) {
-      store.revoke(sid);
-      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "SSO 会话已失效");
+  public ResponseEntity<Map<String, Object>> me(HttpServletRequest request) {
+    HttpSession session = request.getSession(false);
+    UserInfo user = access.currentUser(session);
+    if (user == null) {
+      return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
-    return Collections.singletonMap("message", "SSO 状态验签通过，敏感操作成功");
+    Map<String, Object> result = new LinkedHashMap<String, Object>();
+    result.put("id", user.getId());
+    result.put("userCode", user.getUserCode());
+    result.put("name", user.getName());
+    result.put("companyCode", user.getCompanyCode());
+    result.put("authMode", config.getAuthMode());
+    result.put("authorizedTokenCount", Integer.valueOf(access.authorizedPageCount(session)));
+    return ResponseEntity.ok(result);
   }
 
-  @PostMapping("/api/auth/logout/local")
-  public void local(HttpServletRequest r) {
-    HttpSession s = r.getSession(false);
-    if (s != null) s.invalidate();
+  @GetMapping("/api/pages")
+  public List<Map<String, String>> pageList() {
+    List<Map<String, String>> result = new ArrayList<Map<String, String>>();
+    for (Page page : pages.all()) {
+      Map<String, String> item = new LinkedHashMap<String, String>();
+      item.put("code", page.getCode());
+      item.put("name", page.getName());
+      item.put("path", page.getPath());
+      result.add(item);
+    }
+    return result;
   }
 
-  @PostMapping("/api/auth/logout/global")
-  public Map<String, String> global(HttpServletRequest r) throws Exception {
-    user(r);
-    HttpSession s = r.getSession(false);
-    String sid = (String) s.getAttribute("sid");
-    s.invalidate();
-    Map<String, String> body = new LinkedHashMap<>();
-    body.put("sid", sid);
-    body.put("post_logout_redirect_uri", config.returnUrl);
-    String ticket = client.post("/logout", body, Protocol.random()).get("logout_request");
-    if (ticket == null || ticket.isEmpty()) throw new IllegalArgumentException("SSO 未返回登出票据");
-    return Collections.singletonMap(
-        "redirect",
-        UriComponentsBuilder.fromHttpUrl(config.baseUrl + "/logout")
-            .queryParam("request", ticket)
-            .build()
-            .encode()
-            .toUriString());
+  @PostMapping("/api/auth/logout/page/{pageCode}")
+  public Map<String, Object> logoutPage(
+      @PathVariable String pageCode, HttpServletRequest request) {
+    pages.requireByCode(pageCode);
+    boolean confirmed = access.logoutPage(request.getSession(false), pageCode);
+    Map<String, Object> result = new LinkedHashMap<String, Object>();
+    result.put("message", "本地页面授权已清除");
+    result.put("ssoRevoked", Boolean.valueOf(confirmed));
+    return result;
   }
 
-  @PostMapping(value = "/api/sso/backchannel-logout", consumes = MediaType.APPLICATION_JSON_VALUE)
-  public ResponseEntity<Void> backchannel(@RequestBody Map<String, String> body) throws Exception {
-    JWTClaimsSet c = verifier.verify(body.get("logout_token"), "logout", null, null);
-    // 撤销本身幂等；重复投递也执行，以避免先标记 jti 后清理失败。
-    store.revoke(c.getStringClaim("sid"));
-    return ResponseEntity.noContent().build();
-  }
-
-  @ExceptionHandler(IllegalArgumentException.class)
-  public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException e) {
-    return ResponseEntity.badRequest().body(Collections.singletonMap("message", "协议校验失败，请重新发起登录"));
-  }
-
-  @ExceptionHandler(Exception.class)
-  public ResponseEntity<Map<String, String>> failure(Exception e) {
-    return ResponseEntity.status(503)
-        .body(Collections.singletonMap("message", "操作未完成，请检查服务配置及 SSO 可用性；若正在退出，本地会话已清理"));
+  /** 退出 B 的全部本地页面授权，不撤销 Portal 的全局登录。 */
+  @PostMapping("/api/auth/logout/system")
+  public Map<String, Object> logoutSystem(HttpServletRequest request) {
+    LogoutSummary summary = access.logoutSystem(request.getSession(false));
+    Map<String, Object> result = new LinkedHashMap<String, Object>();
+    result.put("message", "已退出 B 系统；Portal 全局会话未被注销");
+    result.put("attempted", Integer.valueOf(summary.getAttempted()));
+    result.put("confirmed", Integer.valueOf(summary.getConfirmed()));
+    return result;
   }
 
   @ExceptionHandler(ResponseStatusException.class)
-  public ResponseEntity<Map<String, String>> status(ResponseStatusException e) {
-    return ResponseEntity.status(e.getStatus())
-        .body(Collections.singletonMap("message", e.getReason()));
+  public ResponseEntity<Map<String, String>> status(ResponseStatusException error) {
+    return ResponseEntity.status(error.getStatus())
+        .body(Collections.singletonMap("message", safeMessage(error.getReason())));
+  }
+
+  @ExceptionHandler(IllegalArgumentException.class)
+  public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException ignored) {
+    return ResponseEntity.badRequest()
+        .body(Collections.singletonMap("message", "页面或协议参数不合法"));
+  }
+
+  @ExceptionHandler(Exception.class)
+  public ResponseEntity<Map<String, String>> failure(Exception ignored) {
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .body(Collections.singletonMap("message", "请求未完成，请联系管理员检查服务配置"));
+  }
+
+  private String safeMessage(String message) {
+    return message == null ? "请求未完成" : message;
   }
 }

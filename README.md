@@ -1,66 +1,120 @@
-# SSO Client B Demo
+# SSO V2 Client B Demo
 
-普通 Spring Boot **2.7.18 / JDK 8** + Vue 3 参考客户端。与 JeecgBoot 无 Java 依赖，仅通过现有 `/sso/v1` HTTP 契约接入。
+独立的外部系统参考实现：Spring Boot **2.7.18 / JDK 8** + Vue 3。项目只通过 HTTP 接入 DCS4/yth 的 SSO V2，不依赖 JeecgBoot Java 类。
 
-## 当前实现
+> V2 分支：`codex/sso-v2-client-demo`
+>
+> 服务端分支：`DCS4/yth codex/sso-integration`
 
-- state 一次性消费、S256 PKCE、后端 HMAC 原始请求体签名。
-- RS256 身份断言校验、请求 nonce 绑定、可信本地公钥、jti 防重放。
-- B 独立 HttpSession、绝对到期限制、独立本地用户表（首次登录最低权限）。
-- 普通业务、签名 session status 敏感操作、仅本地退出、全局退出。
-- JSON Back-Channel Logout，按 SID 幂等清理全部本地会话，撤销墓碑阻止延迟回调重新建立会话。
-- CSRF 保护（仅机器登出回调豁免）、Vue 演示页、H2 与 MySQL SQL。
+服务端正式接口文档：`DCS4/yth/docs/SSO-V2接口文档.md`。
+
+## 演示内容
+
+- 一个外部系统只使用一组 `client_id + client_secret`；
+- 所有页面共用 `/api/auth/callback` 固定后端回调；
+- 三个普通页面分别映射 `B_PAGE_01`、`B_PAGE_02`、`B_PAGE_03`；
+- 每次直接进入页面都由 B 后端调用 `checkAccessToken(accessToken, pageCode)`；
+- AccessToken、RefreshToken 和 client_secret 全部留在 B 后端；
+- AccessToken 失效后串行轮换 RefreshToken，并原子替换 Token 对；
+- state 一次性消费并绑定服务端目标页面，不接受浏览器提供的任意回跳 URL；
+- 同一代码支持 `PAGE_CONTROLLED` 和 `SSO_ONLY`；
+- 页面 Token family 注销与“退出本系统”；不冒充 Portal 全局退出；
+- 所有本地 POST 保留 CSRF 保护。
+
+示例没有保留旧版 HMAC、JWS/JWKS、PKCE、多回调或 Back-Channel Logout 代码。
+
+## 仓库分工
+
+- `DCS4/yth` 保存 SSO 服务端实现和权威《SSO V2 对外接口文档》；
+- 本仓库保存外部系统可独立运行的代码和面向接入方的详细改造指南；
+- 外部厂商不需要把本项目作为依赖，只需参考其中的集中回调、页面守卫和 Token 仓库。
+
+## 运行配置
+
+| 环境变量 | 示例 | 说明 |
+| --- | --- | --- |
+| `SSO_BASE_URL` | `http://192.9.230.21:10089/oauth2Server/oauth2` | SSO V2 公共前缀 |
+| `SSO_CLIENT_ID` | `client_xxx` | 管理端创建客户端后返回 |
+| `SSO_CLIENT_SECRET` | `...` | 明文只交付一次，只允许后端保存 |
+| `B_CALLBACK_URL` | `http://192.9.230.80:18080/api/auth/callback` | 必须与 SSO 登记值完全一致 |
+| `SSO_AUTH_MODE` | `PAGE_CONTROLLED` | 或 `SSO_ONLY`，必须与服务端登记一致 |
+| `COOKIE_SECURE` | `false` | HTTP 为 false，HTTPS 为 true |
+| `SSO_CONNECT_TIMEOUT` | `2s` | 后端连接超时 |
+| `SSO_READ_TIMEOUT` | `3s` | 后端读取超时 |
+
+页面受控模式还需在 SSO 管理端登记：
+
+| page_code | page_path | 示例 permission_code |
+| --- | --- | --- |
+| `B_PAGE_01` | `/pages/orders` | `b:orders:view` |
+| `B_PAGE_02` | `/pages/reports` | `b:reports:view` |
+| `B_PAGE_03` | `/pages/operations` | `b:operations:view` |
+
+系统地址登记为浏览器实际访问的 B 基础地址，例如 `http://192.9.230.80:18080`；回调只登记相对路径 `/api/auth/callback`。
 
 ## 启动
 
-需要 JDK 8、Maven 3.6+；前端 Node 满足 `frontend/package.json` engines。
+后端：
 
-```sh
-cd frontend
-npm ci
-npm run build
-cd ../backend
-mvn clean test package
-java -jar target/sso-client-b-demo-0.1.0-SNAPSHOT.jar
+```bash
+cd backend
+mvn spring-boot:run
 ```
 
-独立开发前端运行 `npm run dev`，后端运行 `mvn spring-boot:run`。Vite 代理 `/api` 到 18080。开发时将 `B_RETURN_URL` 改为前端地址，并在 SSO 登记相同退出地址。
+前端开发服务器：
 
-单 JAR 可使用 `bash scripts/package.sh` 或 Windows PowerShell `./scripts/package.ps1`。手动方式：先构建 Vue，再将 `frontend/dist/` 内容复制到 `backend/src/main/resources/static/`，然后 Maven 打包。构建产物不提交 Git。
+```bash
+cd frontend
+npm ci
+npm run dev
+```
 
-默认 H2 内存表自动创建，可打开页面；真实登录前必须完成下面配置。重启清空 H2 用户与会话。
+Vite 将 `/api` 代理到 `http://localhost:18080`。后端同时可以直接提供构建后的前端静态文件；打包脚本会先构建 Vue，再生成单个可执行 JAR。
 
-| 环境变量 | 内容 |
-|---|---|
-| SSO_BASE_URL | SSO 公共协议前缀，例如 http://SSO-IP:10089/sso/v1 |
-| SSO_ISSUER | 必须与 SSO 的 issuer 完全一致 |
-| SSO_CLIENT_ID | demo-client-b（需登记） |
-| SSO_CLIENT_SECRET | 与 SSO 解密后的 HMAC Secret 相同 |
-| SSO_TRUSTED_JWKS | 可信渠道部署的本地**仅公钥** JWK Set JSON 绝对路径 |
-| B_CALLBACK_URL | 浏览器能访问且精确登记的回调地址 |
-| B_RETURN_URL | B 首页，亦为精确登记的退出返回地址 |
-| COOKIE_SECURE | HTTP 为 false，HTTPS 为 true |
+Linux/macOS：
 
-公钥文件格式为 `{"keys":[RSA 公钥 JWK]}`，必须包含 kid、kty、n、e，不得包含私钥。由 SSO 运维通过可信渠道交付。客户端不信任 HTTP 自动下载的新公钥；轮换时先更新可信文件，再切换 SSO 签名密钥。
+```bash
+bash scripts/package.sh
+```
 
-SQL 见 `sql/`：01 在 B 数据库执行，02 是 SSO 客户端登记模板。MySQL 模式运行时加 `--spring.profiles.active=mysql`，设置 B_DB_URL、B_DB_USER、B_DB_PASSWORD；不会自动修改 MySQL 表。
+Windows：
 
-## 五分钟验证
+```powershell
+./scripts/package.ps1
+```
 
-1. 未登录打开 B，点击统一登录，Portal 登录后返回 B。
-2. 普通业务成功，敏感业务通过 SSO 签名状态检查。
-3. 仅退出 B，再统一登录：有效 SSO 会话下免密返回。
-4. 同一代码部署第二个独立客户端 C，配置不同 client_id、Secret、端口及 Cookie 名；分别登记。
-5. B 全局退出，C 下一次请求应返回未登录。页面需刷新，不依赖 WebSocket 推送。
-6. Portal 管理员禁用用户，验证 B/C 收到通知失效。
-7. 停止 SSO，敏感操作失败；全局退出失败时 B 本地仍退出，界面明确提示失败。
+## 观察流程
 
-## 范围与限制
+1. 打开 B 首页，直接点击“订单查询”。
+2. B 后端没有页面 Token，生成 state 并 302 到 SSO。
+3. Portal 登录或已有 SSO 会话完成静默授权。
+4. SSO 只回调 `/api/auth/callback?code=...&state=...`。
+5. B 后端兑换并保存 Token，再以 303 返回 `/pages/orders`。
+6. `/pages/orders` 后端调用 `checkAccessToken + B_PAGE_01`，通过后输出页面。
+7. 再次点击该页面时不重新签发 Token，但仍实时调用 SSO 校验。
+8. 点击另一个页面时，页面受控模式会取得与其 `page_code` 独立绑定的 Token。
 
-这是单实例基础示例，不是完整生产客户端 SDK。内存会话、重放记录和撤销墓碑重启丢失，不支持多副本共享；生产化需共享存储并验证故障恢复。当前没有自动熔断、消息补偿队列或完整浏览器 E2E 测试。请求设 2 秒连接/读取超时，不自动重试一次性兑换，不自动循环跳转。
+浏览器开发者工具中只能看到 code、state 和 B 自己的 HttpOnly Session Cookie，看不到 client_secret、AccessToken 或 RefreshToken。
 
-本地用户 role 演示默认权限归 B 所有；当前业务接口仅要求登录，没有管理员管理页面。每次请求检查本地 enabled。
+## 重要代码
 
-HTTP 沿用现有内网 V1 环境，签名不提供机密性。Spring Boot 2.7 是历史版本，按本项目 Java 8 兼容要求固定，正式部署需单独管理维护补丁。
+| 文件 | 作用 |
+| --- | --- |
+| `SsoClient.java` | 集中封装五个 SSO 后端接口 |
+| `PageAccessService.java` | 页面校验、刷新、固定回调和注销主流程 |
+| `LoginStateStore.java` | state 限时、一次性消费及目标绑定 |
+| `PageTokenStore.java` | 按本地 Session 与 page_code 保存 Token |
+| `PageCatalog.java` | 页面路径与 page_code 的服务端白名单 |
+| `PageController.java` | 直接页面 URL 也必须经过后端守卫的示例 |
 
-端到端依赖 Portal 前端正确处理 ssoRedirect / ssoLogoutRedirect、SSO 配置与真实网络；单元测试通过不能替代这些联调。
+详细改造步骤见 [外部系统接入指南](docs/integration-guide.md)，逐接口字段见 [V2 协议摘要](docs/protocol.md)。
+
+## 示例边界
+
+这是协议参考实现，不是生产 SDK：
+
+- Token 暂存在单实例 HttpSession；多实例应使用共享加密存储或粘性会话；
+- 页面表使用代码白名单，真实系统可改为数据库/配置中心，但不能信任浏览器 target；
+- 未实现自动熔断、指标、审计落库和浏览器 E2E；
+- 第一版没有 Back-Channel Logout，Portal 退出后在下一次页面校验时发现 SID 已失效；
+- Spring Boot 2.7 已停止开源维护，示例仅因 JDK 8 兼容要求固定此版本。

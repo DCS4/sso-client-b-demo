@@ -1,40 +1,134 @@
-# 实际协议与联调说明
+# SSO V2 协议摘要
 
-对照 DCS4/yth `codex/sso-integration` 的 SsoProtocolController、SsoDtos、HmacVerifier、TokenService、LogoutOutboxService 实现。该服务是自定义身份断言协议，不是可直接配置 oauth2Login 的完整 OIDC Provider。
+本文供运行 B Demo 时快速查阅。权威契约位于 `DCS4/yth` 的 `docs/SSO-V2接口文档.md`，服务端与示例均不兼容旧 `/sso/v1` 协议。
 
-## 请求
+## 公共前缀
 
-HMAC 原文（LF 换行，无结尾换行）：POST、实际 URI 路径、client_id、秒级 timestamp、随机 nonce、原始 UTF-8 JSON body 的小写 SHA256 十六进制；依次用换行连接。HmacSHA256 使用 UTF-8 Secret，结果 Base64URL 无 padding。请求字节只序列化一次。
+```text
+http://SSO-IP:10089/oauth2Server/oauth2
+```
 
-头：X-SSO-Client / X-SSO-Timestamp / X-SSO-Nonce / X-SSO-Signature。
+| 方法 | 路径 | 调用方 |
+| --- | --- | --- |
+| GET | `/authorize` | 浏览器顶层导航 |
+| POST form | `/token` | 外部系统后端 |
+| POST JSON | `/checkAccessToken` | 外部系统后端 |
+| POST form | `/getUserInfoByOauth2` | 外部系统后端 |
+| POST JSON | `/logout` | 外部系统后端 |
 
-| 接口 | 内容 |
-|---|---|
-| GET /authorize | client_id, redirect_uri, state, code_challenge, code_challenge_method=S256 |
-| POST /exchange | code, redirect_uri, code_verifier；返回 identity_assertion |
-| POST /session/status | sid；返回 session_status JWS |
-| POST /logout | sid, post_logout_redirect_uri；返回 logout_request |
-| GET /logout | request=一次性 logout_request，通过浏览器跳转清 SSO Cookie |
-| B POST /api/sso/backchannel-logout | **JSON** {"logout_token":"JWS"}，成功返回 204 |
+除 `/authorize` 外，不允许浏览器或 Vue 直接调用 SSO。
 
-session_expires_at、auth_time、timestamp 都是 Unix 秒；JWT iat/exp 由库转成 Date。状态断言须验证 client_id、sid、request_nonce、active；不能只读取 JSON active。
+## 授权
 
-## 网络
+```http
+GET /authorize?response_type=code
+  &client_id=client_xxx
+  &redirect_uri=http%3A%2F%2FB-IP%3A18080%2Fapi%2Fauth%2Fcallback
+  &state=RANDOM_STATE
+  &page_code=B_PAGE_01
+```
 
-浏览器必须能访问 Portal、SSO 和 callback；SSO 必须能访问 B backchannel 地址。跨主机不要登记 localhost。按实际 B 内网 IP 配置 SSO 回调 CIDR 白名单，不使用 /0 放开。B 不连接 SSO Redis/MySQL，不共享 SSO_SID。
+`PAGE_CONTROLLED` 必须传 `page_code`；`SSO_ONLY` 可以省略。成功只返回已经登记的固定回调：
 
-同主机不同端口的 Cookie 不按端口隔离。两个示例分别设置 `--server.servlet.session.cookie.name=B_DEMO_SESSION` 与 `C_DEMO_SESSION`，不同主机部署更接近真实环境。
+```text
+/api/auth/callback?code=ONE_TIME_CODE&state=RANDOM_STATE
+```
 
-## 公钥与故障
+授权码默认 60 秒有效且只能消费一次。客户端和回调无效时 SSO 直接返回 400，不向未登记地址跳转。
 
-可信公钥文件代替在线 JWKS 指纹白名单：文件内容本身就是信任锚。未知 kid、非 RS256、私钥文件、签名错误均拒绝。不要从未验证的 HTTP JWKS 下载后直接当可信文件。
+## 授权码兑换
 
-登出通知按 SID 幂等，重复有效通知返回 204。记录 24 小时 SID 墓碑防止登出先于登录回调到达。内存模式仅用于单进程参考；分布式持久化需统一原子边界。
+```http
+POST /token
+Content-Type: application/x-www-form-urlencoded
 
-回调交易只允许一个未完成登录；同浏览器再次点击登录替换前一个 state，旧回调会拒绝。失败应手动重新登录。全局退出先销毁本地会话，再请求 SSO，失败不会声称全局成功。
+grant_type=authorization_code
+client_id=client_xxx
+client_secret=...
+code=...
+redirect_uri=http://B-IP:18080/api/auth/callback
+```
 
-## 文档来源
+```json
+{
+  "code": 200,
+  "msg": "ok",
+  "data": {
+    "access_token": "...",
+    "refresh_token": "...",
+    "token_type": "Bearer",
+    "expires_in": 7200,
+    "refresh_expires_in": 14400,
+    "client_id": "client_xxx",
+    "scope": "page:B_PAGE_01",
+    "openid": "user-id",
+    "page_code": "B_PAGE_01"
+  }
+}
+```
 
-- https://docs.spring.io/spring-boot/docs/2.7.18/reference/html/getting-started.html
-- https://www.rfc-editor.org/rfc/rfc7636.html
-- https://openid.net/specs/openid-connect-backchannel-1_0.html
+## 刷新
+
+仍调用 `/token`：
+
+```text
+grant_type=refresh_token
+client_id=client_xxx
+client_secret=...
+refresh_token=...
+```
+
+成功后 AccessToken 和 RefreshToken 都会变化。旧 RefreshToken 立即失效，重放旧值会撤销整个 Token family；客户端必须串行刷新并原子替换 Token 对。
+
+## 页面校验
+
+```http
+POST /checkAccessToken
+Content-Type: application/json
+
+{
+  "clientId": "client_xxx",
+  "clientSecret": "...",
+  "accessToken": "...",
+  "pageCode": "B_PAGE_01"
+}
+```
+
+只在 `data.active == true` 时放行。无效 Token 通常返回 HTTP 200、业务 `code=500`、`active=false`，不会区分不存在、过期、撤销或权限不足。
+
+## 用户信息
+
+```http
+POST /getUserInfoByOauth2
+Content-Type: application/x-www-form-urlencoded
+
+client_id=client_xxx
+client_secret=...
+tokenValue=...
+```
+
+当前只返回 `id`、`userCode`、`name`、`companyCode`、`enableStatus`，不返回任何密码字段。
+
+## 注销
+
+```http
+POST /logout
+Content-Type: application/json
+
+{
+  "clientId": "client_xxx",
+  "clientSecret": "...",
+  "accessToken": "..."
+}
+```
+
+该接口只撤销当前页面授权对应的 Token family，不注销 Portal 全局 SID。外部系统可以逐个注销自己保存的页面 Token；Portal 全局退出后，其它系统会在下一次页面校验时发现 SID 已失效。
+
+## 错误原则
+
+- HTTP 401：客户端或密钥错误，停止重试并联系管理员；
+- HTTP 400：一次性凭证或请求错误，重新开始授权；
+- HTTP 5xx/网络错误：受控页面 fail closed，不降级放行；
+- 回调 `access_denied`：显示无权限，不循环跳 SSO；
+- RefreshToken 返回 HTTP/业务 `code=400`：清本地页面 Token，重新授权；
+- 日志不得记录 secret、code、Token、Cookie 或完整回调查询串。

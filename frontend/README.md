@@ -1,42 +1,20 @@
-# frontend
+# B Demo 前端
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue 只展示本地登录状态和三个普通页面链接，不持有 SSO 的 client_secret、AccessToken 或 RefreshToken。
 
-## Recommended IDE Setup
+开发启动：
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
+```bash
+npm ci
 npm run dev
 ```
 
-### Type-Check, Compile and Minify for Production
+Vite 会把 `/api/**` 和 `/pages/**` 转发给 `http://localhost:18080`。`/pages/**` 必须到达 B 后端页面守卫，不能配置为前端静态 fallback。
 
-```sh
+生产构建：
+
+```bash
 npm run build
 ```
+
+根目录打包脚本会将 `dist/` 复制到 Spring Boot 静态资源目录。完整接入说明见 `../docs/integration-guide.md`。

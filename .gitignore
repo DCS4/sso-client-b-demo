@@ -80,5 +80,4 @@ frontend/dist/
 .env.*
 !.env.example
 **/application-local.*
-**/trusted-jwks.json
 backend/src/main/resources/static/

@@ -6,7 +6,13 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
 export default defineConfig({
-  server: { proxy: { '/api': 'http://localhost:18080' } },
+  server: {
+    proxy: {
+      '/api': 'http://localhost:18080',
+      // 真实页面 URL 必须到达 B 后端守卫，不能由 Vite 静态回退绕过。
+      '/pages': 'http://localhost:18080',
+    },
+  },
   plugins: [
     vue(),
     vueDevTools(),
