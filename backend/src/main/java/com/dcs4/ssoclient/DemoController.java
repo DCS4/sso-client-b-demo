@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.csrf.CsrfToken;
@@ -25,6 +27,8 @@ import org.springframework.web.server.ResponseStatusException;
 /** 演示页面所需的本地 API；所有 SSO 密钥和 Token 均不会返回给前端。 */
 @RestController
 public class DemoController {
+  private static final Logger log = LoggerFactory.getLogger(DemoController.class);
+
   private final PageAccessService access;
   private final PageCatalog pages;
   private final SsoConfig config;
@@ -49,7 +53,11 @@ public class DemoController {
       @RequestParam(name = "state", required = false) String state,
       @RequestParam(name = "error", required = false) String error,
       HttpServletRequest request) {
+    log.info("[DemoController] 收到 SSO 回调 /api/auth/callback: code={}, state={}, error={}, Host={}",
+        (code != null ? code.substring(0, Math.min(code.length(), 8)) + "..." : null),
+        state, error, request.getHeader("Host"));
     URI target = access.completeCallback(request, code, state, error);
+    log.info("[DemoController] 回调处理完毕，303 重定向到业务页面: {}", target);
     return ResponseEntity.status(HttpStatus.SEE_OTHER).location(target).build();
   }
 
@@ -107,18 +115,21 @@ public class DemoController {
 
   @ExceptionHandler(ResponseStatusException.class)
   public ResponseEntity<Map<String, String>> status(ResponseStatusException error) {
+    log.warn("[DemoController] 业务状态异常: status={}, reason={}", error.getStatus(), error.getReason());
     return ResponseEntity.status(error.getStatus())
         .body(Collections.singletonMap("message", safeMessage(error.getReason())));
   }
 
   @ExceptionHandler(IllegalArgumentException.class)
-  public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException ignored) {
+  public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException e) {
+    log.warn("[DemoController] 参数不合法: {}", e.getMessage());
     return ResponseEntity.badRequest()
         .body(Collections.singletonMap("message", "页面或协议参数不合法"));
   }
 
   @ExceptionHandler(Exception.class)
-  public ResponseEntity<Map<String, String>> failure(Exception ignored) {
+  public ResponseEntity<Map<String, String>> failure(Exception error) {
+    log.error("[DemoController] 系统未捕获异常", error);
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
         .body(Collections.singletonMap("message", "请求未完成，请联系管理员检查服务配置"));
   }

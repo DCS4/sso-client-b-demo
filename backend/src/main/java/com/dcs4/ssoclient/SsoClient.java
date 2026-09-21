@@ -20,6 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
@@ -33,6 +35,8 @@ import org.springframework.web.util.UriComponentsBuilder;
  */
 @Service
 public class SsoClient {
+  private static final Logger log = LoggerFactory.getLogger(SsoClient.class);
+
   private final SsoConfig config;
   private final ObjectMapper json;
   private final RestTemplate http;
@@ -59,10 +63,13 @@ public class SsoClient {
     if (config.isPageControlled()) {
       uri.queryParam("page_code", pageCode);
     }
-    return uri.build().encode().toUriString();
+    String result = uri.build().encode().toUriString();
+    log.info("[SsoClient] 生成 authorizeUrl: state={}, pageCode={}, url={}", state, pageCode, result);
+    return result;
   }
 
   public TokenData exchangeCode(String code) {
+    log.info("[SsoClient] 正在调用 SSO /token 兑换授权码: code={}", code);
     MultiValueMap<String, String> form = baseTokenForm("authorization_code");
     form.add("code", code);
     form.add("redirect_uri", config.getCallbackUrl());
@@ -70,12 +77,15 @@ public class SsoClient {
   }
 
   public TokenData refresh(String refreshToken) {
+    log.info("[SsoClient] 正在调用 SSO /token 刷新 Token");
     MultiValueMap<String, String> form = baseTokenForm("refresh_token");
     form.add("refresh_token", refreshToken);
     return requireData(postForm("/token", form), TokenData.class, "SSO 未返回刷新 Token");
   }
 
   public ActiveTokenData checkAccessToken(String accessToken, String pageCode) {
+    log.info("[SsoClient] 正在调用 SSO /checkAccessToken: pageCode={}, tokenPrefix={}", pageCode,
+        (accessToken != null && accessToken.length() > 6 ? accessToken.substring(0, 6) + "..." : ""));
     config.requireBackendCredentials();
     Map<String, String> body = new LinkedHashMap<String, String>();
     body.put("clientId", config.getClientId());
@@ -86,34 +96,44 @@ public class SsoClient {
     }
     ApiEnvelope envelope = postJson("/checkAccessToken", body);
     if (envelope.getData() == null || envelope.getData().isNull()) {
+      log.warn("[SsoClient] /checkAccessToken 返回空数据 (Token已失效或无权访问)");
       return new ActiveTokenData();
     }
     try {
       // checkAccessToken 的业务 code=500 是“无效”而不是网络异常，按 active=false 处理。
-      return json.treeToValue(envelope.getData(), ActiveTokenData.class);
+      ActiveTokenData result = json.treeToValue(envelope.getData(), ActiveTokenData.class);
+      log.info("[SsoClient] /checkAccessToken 校验结果: active={}, uid={}, pageCode={}",
+          result.isActive(), result.getUid(), result.getPageCode());
+      return result;
     } catch (Exception e) {
+      log.error("[SsoClient] SSO Token 校验响应解析异常", e);
       throw new SsoClientException("SSO Token 校验响应格式错误", false, e);
     }
   }
 
   public UserInfo getUserInfo(String accessToken) {
+    log.info("[SsoClient] 正在调用 SSO /getUserInfoByOauth2 获取用户信息");
     config.requireBackendCredentials();
     MultiValueMap<String, String> form = new LinkedMultiValueMap<String, String>();
     form.add("client_id", config.getClientId());
     form.add("client_secret", config.getClientSecret());
     form.add("tokenValue", accessToken);
-    return requireData(
+    UserInfo user = requireData(
         postForm("/getUserInfoByOauth2", form), UserInfo.class, "SSO 未返回用户信息");
+    log.info("[SsoClient] 获取用户信息成功: id={}, name={}, userCode={}", user.getId(), user.getName(), user.getUserCode());
+    return user;
   }
 
   /** 注销的是当前页面 Token family，不会退出 Portal 全局 SID。 */
   public boolean logout(String accessToken) {
+    log.info("[SsoClient] 正在调用 SSO /logout 注销页面 Token");
     config.requireBackendCredentials();
     Map<String, String> body = new LinkedHashMap<String, String>();
     body.put("clientId", config.getClientId());
     body.put("clientSecret", config.getClientSecret());
     body.put("accessToken", accessToken);
     LogoutData data = requireData(postJson("/logout", body), LogoutData.class, "SSO 未返回注销结果");
+    log.info("[SsoClient] /logout 注销响应: revoked={}", data.isRevoked());
     return data.isRevoked();
   }
 
@@ -141,23 +161,30 @@ public class SsoClient {
   private ApiEnvelope exchange(String endpoint, HttpEntity<?> entity) {
     try {
       URI uri = URI.create(config.endpoint(endpoint));
+      log.info("[SsoClient] 向 SSO 发送 HTTP 请求: endpoint={}", endpoint);
       ResponseEntity<String> response = http.exchange(uri, HttpMethod.POST, entity, String.class);
+      log.info("[SsoClient] 收到 SSO HTTP 响应: endpoint={}, status={}", endpoint, response.getStatusCodeValue());
       ApiEnvelope envelope = json.readValue(response.getBody(), ApiEnvelope.class);
       if (envelope == null) {
+        log.error("[SsoClient] SSO 返回空响应体: endpoint={}", endpoint);
         throw new SsoClientException("SSO 返回空响应", false);
       }
       return envelope;
     } catch (RestClientResponseException e) {
+      log.error("[SsoClient] SSO 接口返回 HTTP 错误: endpoint={}, status={}, body={}",
+          endpoint, e.getRawStatusCode(), e.getResponseBodyAsString());
       boolean unavailable = e.getRawStatusCode() >= 500;
       throw new SsoClientException(
           unavailable ? "SSO 服务暂不可用" : responseMessage(e.getResponseBodyAsString()),
           unavailable,
           e);
     } catch (ResourceAccessException e) {
+      log.error("[SsoClient] 连接 SSO 服务超时或失败: endpoint={}, error={}", endpoint, e.getMessage());
       throw new SsoClientException("无法连接 SSO 服务", true, e);
     } catch (SsoClientException e) {
       throw e;
     } catch (Exception e) {
+      log.error("[SsoClient] 解析 SSO 响应异常: endpoint={}", endpoint, e);
       throw new SsoClientException("无法解析 SSO 响应", false, e);
     }
   }

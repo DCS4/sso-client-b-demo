@@ -31,12 +31,16 @@
 
 ## 运行配置
 
+本 Demo 的默认值同时写在 `backend/src/main/resources/application.properties`（本地/IDE 启动）和 `application.yml`（服务器部署），两份要保持一致；同一份 classpath 里 `.properties` 优先级更高。
+
+`client_secret` 不进版本库：两个文件里都只留 `${SSO_CLIENT_SECRET:}` 占位，真实值放在进程工作目录的 `.env`（复制 `.env.example`，已在 .gitignore 中）。仓库根目录启动读 `.env`，`backend/` 目录启动读 `../.env`。`.env` 里也可以直接写 Spring 属性名（如 `sso.base-url`）来覆盖默认值。
+
 | 环境变量 | 示例 | 说明 |
 | --- | --- | --- |
 | `SSO_BASE_URL` | `http://192.9.230.21:10089/oauth2Server/oauth2` | SSO V2 公共前缀 |
 | `SSO_CLIENT_ID` | `client_xxx` | 管理端创建客户端后返回 |
 | `SSO_CLIENT_SECRET` | `...` | 明文只交付一次，只允许后端保存 |
-| `B_CALLBACK_URL` | `http://192.9.230.80:18080/api/auth/callback` | 必须与 SSO 登记值完全一致 |
+| `B_CALLBACK_URL` | `http://192.9.230.80:18085/api/auth/callback` | 必须与 SSO 登记值完全一致 |
 | `SSO_AUTH_MODE` | `PAGE_CONTROLLED` | 或 `SSO_ONLY`，必须与服务端登记一致 |
 | `COOKIE_SECURE` | `false` | HTTP 为 false，HTTPS 为 true |
 | `SSO_CONNECT_TIMEOUT` | `2s` | 后端连接超时 |
@@ -69,7 +73,27 @@ npm ci
 npm run dev
 ```
 
-Vite 将 `/api` 代理到 `http://localhost:18080`。后端同时可以直接提供构建后的前端静态文件；打包脚本会先构建 Vue，再生成单个可执行 JAR。
+Vite 将 `/api` 和 `/pages` 代理到 `http://localhost:18085`。后端同时可以直接提供构建后的前端静态文件；打包脚本会先构建 Vue，再生成单个可执行 JAR。
+
+只改前端时，手动同步静态产物（`backend/src/main/resources/static/` 已在 .gitignore 中，属于本地构建产物）：
+
+```bash
+cd frontend && npm run build && cd ..
+rm -rf backend/src/main/resources/static
+mkdir -p backend/src/main/resources/static
+cp -R frontend/dist/. backend/src/main/resources/static/
+```
+
+Windows PowerShell：
+
+```powershell
+cd frontend; npm run build; cd ..
+Remove-Item -Recurse -Force backend/src/main/resources/static
+New-Item -ItemType Directory -Force backend/src/main/resources/static | Out-Null
+Copy-Item frontend/dist/* backend/src/main/resources/static -Recurse -Force
+```
+
+改完前端后重启后端才会重新读取 `static/`；打成 JAR 时 Maven 会把 `static/` 一起打包，所以必须**先拷文件再执行 `mvn package`**，或直接跑 `scripts/package.*`。
 
 Linux/macOS：
 

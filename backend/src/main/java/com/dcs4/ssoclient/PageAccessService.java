@@ -14,6 +14,8 @@ import java.util.Objects;
 import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -27,6 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @Service
 public class PageAccessService {
+  private static final Logger log = LoggerFactory.getLogger(PageAccessService.class);
   private static final String USER_ATTRIBUTE = PageAccessService.class.getName() + ".user";
 
   private final SsoConfig config;
@@ -45,23 +48,33 @@ public class PageAccessService {
   public AccessResult enter(HttpServletRequest request, Page page) {
     HttpSession session = request.getSession(true);
     String tokenKey = config.tokenKey(page.getCode());
+    log.info("[PageAccessService] 检查页面授权: pageCode={}, path={}, sessionId={}",
+        page.getCode(), page.getPath(), session.getId());
     synchronized (session) {
       StoredToken current = tokens.get(session, tokenKey);
       if (current != null) {
+        log.info("[PageAccessService] 发现本地缓存 Token，执行 checkAccessToken 校验: pageCode={}", page.getCode());
         ActiveTokenData checked = checkOrFailClosed(current.getAccessToken(), page.getCode());
         if (matches(checked, current, page.getCode())) {
+          log.info("[PageAccessService] Token 仍然有效，允许访问: pageCode={}, user={}",
+              page.getCode(), currentUser(session) != null ? currentUser(session).getName() : "已认证");
           return AccessResult.allowed(currentUser(session));
         }
 
+        log.warn("[PageAccessService] Token 已失效或页面受控校验不匹配，尝试使用 RefreshToken 刷新: pageCode={}", page.getCode());
         StoredToken refreshed = tryRefresh(session, tokenKey, current, page.getCode());
         if (refreshed != null) {
+          log.info("[PageAccessService] RefreshToken 刷新成功，允许访问: pageCode={}", page.getCode());
           return AccessResult.allowed(currentUser(session));
         }
       }
 
       // target 只来自服务端 PageCatalog，不接受浏览器提供的任意 URL。
       String state = states.begin(session, page.getCode(), page.getPath());
-      return AccessResult.redirect(URI.create(sso.authorizeUrl(state, page.getCode())));
+      String authUrl = sso.authorizeUrl(state, page.getCode());
+      log.info("[PageAccessService] 生成单点登录授权跳转: state={}, pageCode={}, authUrl={}",
+          state, page.getCode(), authUrl);
+      return AccessResult.redirect(URI.create(authUrl));
     }
   }
 
@@ -71,39 +84,60 @@ public class PageAccessService {
   public URI completeCallback(
       HttpServletRequest request, String code, String state, String protocolError) {
     HttpSession session = request.getSession(false);
+    log.info("[PageAccessService] 开始处理 SSO 回调 completeCallback: code={}, state={}, error={}, sessionExists={}, sessionId={}",
+        (code != null ? (code.length() > 8 ? code.substring(0, 8) + "..." : code) : null),
+        state, protocolError, (session != null), (session != null ? session.getId() : "null"));
     LoginTransaction transaction = states.consume(session, state);
     if (transaction == null) {
+      log.error("[PageAccessService] 登录事务不存在、过期或已使用! state={}, session={}. 请检查浏览器访问地址与回调地址的 Host/端口 是否一致(例如 127.0.0.1 vs localhost 会导致 Cookie 隔离)",
+          state, (session != null ? session.getId() : "null"));
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "登录事务不存在、过期或已使用");
     }
     if (StringUtils.hasText(protocolError)) {
+      log.error("[PageAccessService] SSO 拒绝授权: protocolError={}, state={}, pageCode={}",
+          protocolError, state, transaction.getPageCode());
       HttpStatus status = "access_denied".equals(protocolError) ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST;
       throw new ResponseStatusException(status, "SSO 拒绝本次页面授权：" + protocolError);
     }
     if (!StringUtils.hasText(code)) {
+      log.error("[PageAccessService] SSO 未返回授权码 code: state={}", state);
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "SSO 未返回授权码");
     }
 
     try {
+      log.info("[PageAccessService] 准备通过 code 换取 Token: code={}", code);
       TokenData issued = sso.exchangeCode(code);
+      log.info("[PageAccessService] 成功换取 Token: openid={}, pageCode={}, expiresIn={}",
+          issued.getOpenid(), issued.getPageCode(), issued.getExpiresIn());
       validateIssuedToken(issued, transaction.getPageCode());
+      log.info("[PageAccessService] 准备校验新签发的 Token: pageCode={}", transaction.getPageCode());
       ActiveTokenData checked = sso.checkAccessToken(issued.getAccessToken(), transaction.getPageCode());
       StoredToken stored = new StoredToken(issued, nowSeconds());
       if (!matches(checked, stored, transaction.getPageCode())) {
+        log.error("[PageAccessService] 页面 Token checkAccessToken 校验未通过! active={}, pageCode={}",
+            checked.isActive(), checked.getPageCode());
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "页面 Token 校验未通过");
       }
 
+      log.info("[PageAccessService] 准备获取用户信息: openid={}", issued.getOpenid());
       UserInfo user = sso.getUserInfo(issued.getAccessToken());
       if (user == null || !issued.getOpenid().equals(user.getId())
           || !Integer.valueOf(1).equals(user.getEnableStatus())) {
+        log.error("[PageAccessService] 用户信息无效或已被停用: user={}, enableStatus={}",
+            user != null ? user.getName() : null, user != null ? user.getEnableStatus() : null);
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "用户信息无效或用户已停用");
       }
+      log.info("[PageAccessService] 成功识别登录用户: name={}, userCode={}, companyCode={}",
+          user.getName(), user.getUserCode(), user.getCompanyCode());
 
       // 身份建立后更换 Session ID，保留已消费的服务端状态并防止会话固定攻击。
       request.changeSessionId();
       tokens.put(session, config.tokenKey(transaction.getPageCode()), stored);
       session.setAttribute(USER_ATTRIBUTE, user);
+      log.info("[PageAccessService] 登录流程成功完成，即将跳转目标页面: {}", transaction.getTargetPath());
       return URI.create(transaction.getTargetPath());
     } catch (SsoClientException e) {
+      log.error("[PageAccessService] SSO 客户端通信异常", e);
       throw new ResponseStatusException(
           e.isUnavailable() ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.BAD_REQUEST,
           e.getMessage());

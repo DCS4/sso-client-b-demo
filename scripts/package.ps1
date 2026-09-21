@@ -7,6 +7,7 @@ try {
     npm run build
     if ($LASTEXITCODE -ne 0) { throw 'frontend build failed' }
 } finally { Pop-Location }
+Remove-Item -Recurse -Force backend/src/main/resources/static -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force backend/src/main/resources/static | Out-Null
 Copy-Item frontend/dist/* backend/src/main/resources/static -Recurse -Force
 mvn -B -f backend/pom.xml clean verify

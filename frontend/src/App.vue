@@ -79,8 +79,8 @@ onMounted(refresh)
     </section>
 
     <section>
-      <h2>受控页面</h2>
-      <p>这些是普通链接，不携带 Token。直接输入页面地址也会经过 B 后端校验。</p>
+      <h2>{{ user && user.authMode === 'SSO_ONLY' ? '业务页面（普通 SSO 模式）' : '受控页面（页面权限控制模式）' }}</h2>
+      <p>{{ user && user.authMode === 'SSO_ONLY' ? '这些是业务系统普通链接，不携带 Token。用户登录后由本地会话统一放行，无需逐页向 SSO 申请页面 Token。' : '这些是受控页面，不携带 Token。直接输入页面地址也会由 B 后端携带 page_code 向 SSO 实时验权。' }}</p>
       <div class="pages">
         <a v-for="page in pages" :key="page.code" :href="page.path">
           <strong>{{ page.name }}</strong>
@@ -99,8 +99,8 @@ onMounted(refresh)
 </template>
 
 <style>
-*{box-sizing:border-box}body{margin:0;background:#eef2f6;color:#182c43;font-family:system-ui,sans-serif}
-main{max-width:940px;margin:48px auto;padding:0 24px}.eyebrow{letter-spacing:2px;color:#476b89;font-size:12px}
+*{box-sizing:border-box}body{margin:0;background:#eef2f6;color:#182c43;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Hiragino Sans GB","Microsoft YaHei","微软雅黑",Arial,sans-serif}
+main{max-width:940px;margin:48px auto;padding:0 24px}.eyebrow{letter-spacing:1.5px;color:#476b89;font-size:12px;font-weight:600}
 h1{font-size:42px;margin:12px 0}h2{font-size:21px}section{background:white;border:1px solid #dbe3eb;border-radius:12px;padding:24px;margin:22px 0}
 p{line-height:1.7;color:#53677a}button{background:#164f78;color:white;border:0;padding:11px 16px;border-radius:6px;cursor:pointer;margin:4px}
 button:disabled{opacity:.45;cursor:default}dl{display:grid;grid-template-columns:160px 1fr;gap:12px}dd{margin:0}.pages{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}

@@ -8,9 +8,9 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 export default defineConfig({
   server: {
     proxy: {
-      '/api': 'http://localhost:18080',
+      '/api': 'http://localhost:18085',
       // 真实页面 URL 必须到达 B 后端守卫，不能由 Vite 静态回退绕过。
-      '/pages': 'http://localhost:18080',
+      '/pages': 'http://localhost:18085',
     },
   },
   plugins: [
