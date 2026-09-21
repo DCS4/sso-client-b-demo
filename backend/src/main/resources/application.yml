@@ -15,15 +15,28 @@ server:
         same-site: lax
         secure: false
 
+#sso:
+#  # 1. 对应主平台 SSO 服务的基础地址
+#  base-url: http://localhost:19089/oauth2Server/oauth2
+#  # 2. 匹配数据库 sys_sso 录入的 client_id 和明文密钥 (由根目录 .env 注入)
+#  client-id: ${SSO_CLIENT_ID:demo_client_b}
+#  client-secret: ${SSO_CLIENT_SECRET:${sso.client-secret:}}
+#  # 3. 固定回调地址 (与数据库中的 sys_address + callback_address 完全一致)
+#  callback-url: ${B_CALLBACK_URL:http://localhost:18085/api/auth/callback}
+#  # 4. 认证模式 (支持在 .env 中设置 SSO_AUTH_MODE 覆盖，默认 SSO_ONLY)
+#  auth-mode: ${SSO_AUTH_MODE:${sso.auth-mode:SSO_ONLY}}
+#  connect-timeout: 2s
+#  read-timeout: 3s
+
 sso:
   # 1. 对应主平台 SSO 服务的基础地址
-  base-url: http://localhost:19089/oauth2Server/oauth2
+  base-url: ${SSO_BASE_URL:http://localhost:19089/oauth2Server/oauth2}
   # 2. 匹配数据库 sys_sso 录入的 client_id 和明文密钥 (由根目录 .env 注入)
   client-id: ${SSO_CLIENT_ID:demo_client_b}
-  client-secret: ${SSO_CLIENT_SECRET:${sso.client-secret:}}
-  # 3. 固定回调地址 (与数据库中的 sys_address + callback_address 完全一致)
+  client-secret: ${SSO_CLIENT_SECRET:}
+  # 3. 固定回调地址 (与数据库 sys_address + callback_address 完全一致)
   callback-url: ${B_CALLBACK_URL:http://localhost:18085/api/auth/callback}
   # 4. 认证模式 (支持在 .env 中设置 SSO_AUTH_MODE 覆盖，默认 SSO_ONLY)
-  auth-mode: ${SSO_AUTH_MODE:${sso.auth-mode:SSO_ONLY}}
+  auth-mode: ${SSO_AUTH_MODE:SSO_ONLY}
   connect-timeout: 2s
   read-timeout: 3s
