@@ -51,6 +51,18 @@ class SsoClientResultTest {
   }
 
   @Test
+  void activeTokenRequiresSuccessfulResultEnvelope() {
+    server.expect(requestTo("http://127.0.0.1:19089/oauth2Server/oauth2/checkAccessToken"))
+        .andRespond(withSuccess("{\\"success\\":true,\\"code\\":200,\\"message\\":\\"\\","
+            + "\\"result\\":{\\"active\\":true,\\"uid\\":\\"1001\\",\\"client_id\\":\\"client-b\\","
+            + "\\"page_code\\":\\"B_PAGE_01\\"}}", MediaType.APPLICATION_JSON));
+    ActiveTokenData checked = sso.checkAccessToken("valid", "B_PAGE_01");
+    assertTrue(checked.isActive());
+    assertEquals("1001", checked.getUid());
+    server.verify();
+  }
+
+  @Test
   void rejectsBusinessFailureEvenIfResponseClaimsActiveTrue() {
     server.expect(requestTo("http://127.0.0.1:19089/oauth2Server/oauth2/checkAccessToken"))
         .andRespond(withSuccess("{\"success\":false,\"code\":500,\"message\":\"Token无效\","
