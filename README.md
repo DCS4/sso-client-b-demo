@@ -4,7 +4,7 @@
 
 > V2 分支：`codex/sso-v2-client-demo`
 >
-> 服务端分支：`DCS4/yth feat/sso-all-in-one`（待合并修复：`codex/sso-v2-config-hardening-20260922`）
+> 服务端参考分支：`DCS4/yth feat/sso-all-in-one`（SSO V2 配置与用户生命周期相关修复已合入）
 
 服务端接口文档：`DCS4/yth/docs/SSO-V2接口文档.md`。当前联调版本将业务接口响应外壳统一为 JeecgBoot 的 `success/message/code/result`；外部客户端只解析 `result`，并且必须同时检查 `success=true` 和校验数据 `result.active=true`，不能继续按照旧版 `code/msg/data` 处理。
 
@@ -23,6 +23,32 @@
 
 示例没有保留旧版 HMAC、JWS/JWKS、PKCE、多回调或 Back-Channel Logout 代码。
 
+## 接入方先读：哪些代码必须理解，哪些可以直接替换
+
+本项目是**协议实现示例，不是需要整个复制到业务系统里的 SDK**。真正接入时，建议按以下顺序读代码：
+
+| 接入职责 | 当前实现位置 | 必须保留的语义 / 可替换的实现 |
+| --- | --- | --- |
+| SSO 协议访问 | `SsoGateway.java`、`SsoClient.java` | 只保留一个后端协议适配入口；厂商可用自己的 HTTP 客户端实现 `SsoGateway`，保持 V2 端点、凭据和响应校验不变 |
+| 业务页面入口 + 唯一回调 | `PageAccessService.enter/completeCallback`、`PageController`、`DemoController.callback` | 每次业务页面/后端入口执行校验；所有页面共用一个后端 callback。Controller 中的示例路由和 HTML 可以替换 |
+| 后端页面白名单 | `PageCatalog.java` | `page_path ↔ page_code` 和回跳目标由后端登记，实际来源可换数据库/配置中心 |
+| state 仓库 | `LoginStateStore.java` | 随机、限时、一次性消费且绑定服务端目标；可换已有 Session/Redis |
+| Token 仓库 + 配置 | `PageTokenStore.java`、`SsoConfig.java` | 密钥/Token 后端保存；刷新成对替换。Demo 用单机 HttpSession，真实多实例用业务系统现有共享存储和互斥策略 |
+
+```text
+真实业务页面请求
+  -> 公共页面守卫 PageAccessService.enter
+  -> SsoGateway (SSO HTTP 协议)                 <-- 替换 SsoClient 不影响业务流程
+  -> 无授权时保存 LoginStateStore 并导航 authorize
+  -> 唯一固定 callback -> PageAccessService.completeCallback
+  -> 兑换 + 核对 Token -> PageTokenStore -> 回原始服务端登记页面
+```
+
+**接入必要代码已在相应类和关键方法标注“接入必要项/必要/页面守卫/固定回调”等注释。**
+`DemoController.me/pageList`、`PageController.render`、前端展示组件只是演示界面，不属于协议接入必需项。不要把 Demo 的 HttpSession 锁直接当作多实例分布式锁，也不要因为采用其它后端技术栈就改变 code/state 一次性、客户端/页面绑定、失效时拒绝访问和局部退出语义。
+
+本轮只整理后端代码依赖与注释、删掉无效重复配置注释；**没有改变公开 HTTP 路径、Vue 页面、登录/回调顺序、Token 刷新/退出行为、双模式语义、凭据配置项和本地存储方式**。运行示例仍然按下文步骤配置。其它厂商若直接复制代码，必须按目标运行环境进行会话和并发改造。
+
 ## 仓库分工
 
 - `DCS4/yth` 保存 SSO 服务端实现和权威《SSO V2 对外接口文档》；
@@ -31,7 +57,7 @@
 
 ## 运行配置
 
-本 Demo 的默认值同时写在 `backend/src/main/resources/application.properties`（本地/IDE 启动）和 `application.yml`（服务器部署），两份要保持一致；同一份 classpath 里 `.properties` 优先级更高。
+本 Demo 为兼容现有 IDE/部署方式，保留语义一致的 `backend/src/main/resources/application.properties` 和 `application.yml`；同一份 classpath 里 `.properties` 优先级更高。**真实厂商不要照搬两份配置**，在已有配置中心只保留一份权威来源即可。
 
 `client_secret` 不进版本库：两个文件里都只留 `${SSO_CLIENT_SECRET:}` 占位，真实值放在进程工作目录的 `.env`（复制 `.env.example`，已在 .gitignore 中）。仓库根目录启动读 `.env`，`backend/` 目录启动读 `../.env`。`.env` 里也可以直接写 Spring 属性名（如 `sso.base-url`）来覆盖默认值。
 
@@ -124,8 +150,8 @@ Windows：
 
 | 文件 | 作用 |
 | --- | --- |
-| `SsoClient.java` | 集中封装五个 SSO 后端接口 |
-| `PageAccessService.java` | 页面校验、刷新、固定回调和注销主流程 |
+| `SsoGateway.java` / `SsoClient.java` | 协议边界及现有后端 HTTP 适配器：授权、Token、检查、用户信息与注销 |
+| `PageAccessService.java` | 不依赖具体 HTTP 适配器的页面校验、刷新、固定回调与注销主流程 |
 | `LoginStateStore.java` | state 限时、一次性消费及目标绑定 |
 | `PageTokenStore.java` | 按本地 Session 与 page_code 保存 Token |
 | `PageCatalog.java` | 页面路径与 page_code 的服务端白名单 |
