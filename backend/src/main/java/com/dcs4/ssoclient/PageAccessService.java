@@ -2,7 +2,7 @@ package com.dcs4.ssoclient;
 
 import com.dcs4.ssoclient.LoginStateStore.LoginTransaction;
 import com.dcs4.ssoclient.PageCatalog.Page;
-import com.dcs4.ssoclient.SsoClient.SsoClientException;
+import com.dcs4.ssoclient.SsoGateway.SsoClientException;
 import com.dcs4.ssoclient.SsoModels.ActiveTokenData;
 import com.dcs4.ssoclient.SsoModels.StoredToken;
 import com.dcs4.ssoclient.SsoModels.TokenData;
@@ -26,6 +26,10 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>每次进入页面都会调用 checkAccessToken。只有 AccessToken 无效时才尝试一次
  * RefreshToken 轮换；同一 HttpSession 上加锁，防止两个请求并发消费同一 RefreshToken。</p>
+ *
+ * <p>【接入必要项 2/5：业务接入流程】真实项目把 enter() 接到统一页面守卫，
+ * 把 completeCallback() 接到唯一后端回调；与 SSO 的协议交互通过 SsoGateway 隔离。
+ * 示例的 HttpSession 存储及页面目录可独立替换，不必照搬 Demo Controller 和页面 HTML。</p>
  */
 @Service
 public class PageAccessService {
@@ -33,23 +37,25 @@ public class PageAccessService {
   private static final String USER_ATTRIBUTE = PageAccessService.class.getName() + ".user";
 
   private final SsoConfig config;
-  private final SsoClient sso;
+  private final SsoGateway sso;
   private final LoginStateStore states;
   private final PageTokenStore tokens;
 
   public PageAccessService(
-      SsoConfig config, SsoClient sso, LoginStateStore states, PageTokenStore tokens) {
+      SsoConfig config, SsoGateway sso, LoginStateStore states, PageTokenStore tokens) {
     this.config = config;
     this.sso = sso;
     this.states = states;
     this.tokens = tokens;
   }
 
+  /** 【页面守卫】每次真实页面请求都从后端进入；只检查前端菜单不能防止直接 URL 越权。 */
   public AccessResult enter(HttpServletRequest request, Page page) {
     HttpSession session = request.getSession(true);
     String tokenKey = config.tokenKey(page.getCode());
     log.debug("[PageAccessService] 检查页面授权: pageCode={}, path={}",
         page.getCode(), page.getPath());
+    // Demo 只在单 JVM HttpSession 上串行刷新；多实例需把锁/Token 存储替换为共享实现。
     synchronized (session) {
       StoredToken current = tokens.get(session, tokenKey);
       if (current != null) {
@@ -69,7 +75,7 @@ public class PageAccessService {
         }
       }
 
-      // target 只来自服务端 PageCatalog，不接受浏览器提供的任意 URL。
+      // 【必要】state 绑定服务端 pageCode/targetPath：浏览器不能指定回跳位置或越权页面。
       String state = states.begin(session, page.getCode(), page.getPath());
       String authUrl = sso.authorizeUrl(state, page.getCode());
       log.debug("[PageAccessService] 已生成单点登录授权跳转: pageCode={}", page.getCode());
@@ -78,13 +84,15 @@ public class PageAccessService {
   }
 
   /**
-   * 固定回调：消费 state、后端兑换 code、核对绑定、保存 Token，并返回白名单目标。
+   * 【唯一固定回调】消费 state、后端兑换 code、核对绑定、保存 Token，并 303 返回白名单目标。
+   * 同一个 client_id 的所有页面只登记这一个 callback；不要为每个页面重复写协议代码。
    */
   public URI completeCallback(
       HttpServletRequest request, String code, String state, String protocolError) {
     HttpSession session = request.getSession(false);
     log.debug("[PageAccessService] 收到 SSO 回调: hasCode={}, hasState={}, error={}, sessionExists={}",
         StringUtils.hasText(code), StringUtils.hasText(state), protocolError, session != null);
+    // 【一次性事务】先消费 state，再处理 error/code；重复回调不能重复换 Token。
     LoginTransaction transaction = states.consume(session, state);
     if (transaction == null) {
       log.warn("[PageAccessService] 登录事务不存在、过期或已使用; 请核对浏览器访问与回调的 Host");
@@ -103,6 +111,7 @@ public class PageAccessService {
 
     try {
       log.debug("[PageAccessService] 正在兑换一次性授权码");
+      // 【必要】code 在后端兑换；核对 client_id / page_code / 用户身份后才能创建本地登录。
       TokenData issued = sso.exchangeCode(code);
       log.info("[PageAccessService] 成功换取 Token: openid={}, pageCode={}, expiresIn={}",
           issued.getOpenid(), issued.getPageCode(), issued.getExpiresIn());
@@ -127,7 +136,7 @@ public class PageAccessService {
       log.info("[PageAccessService] 成功识别登录用户: name={}, userCode={}, companyCode={}",
           user.getName(), user.getUserCode(), user.getCompanyCode());
 
-      // 身份建立后更换 Session ID，保留已消费的服务端状态并防止会话固定攻击。
+      // 【必要】身份建立后轮换本地 Session ID；Token 只写服务端仓库，浏览器仅持有会话 Cookie。
       request.changeSessionId();
       tokens.put(session, config.tokenKey(transaction.getPageCode()), stored);
       session.setAttribute(USER_ATTRIBUTE, user);
@@ -153,6 +162,7 @@ public class PageAccessService {
     return session == null ? 0 : tokens.size(session);
   }
 
+  /** 【页面级登出】清本地该页面授权并撤销其 Token family；不影响 Portal SID。 */
   public boolean logoutPage(HttpSession session, String pageCode) {
     if (session == null) {
       return false;
@@ -171,7 +181,7 @@ public class PageAccessService {
     }
   }
 
-  /** 逐个撤销本系统保存的 Token family；这不等同于 Portal 全局退出。 */
+  /** 【本系统退出】逐个撤销本系统 Token family、销毁本地会话；不等同于 Portal 全局退出。 */
   public LogoutSummary logoutSystem(HttpSession session) {
     if (session == null) {
       return new LogoutSummary(0, 0);
@@ -195,6 +205,7 @@ public class PageAccessService {
     return new LogoutSummary(attempted, confirmed);
   }
 
+  /** 【刷新必要规则】同一会话锁内只用一次旧 RefreshToken，验证后成对替换新 Access/Refresh。 */
   private StoredToken tryRefresh(
       HttpSession session, String tokenKey, StoredToken current, String pageCode) {
     if (!StringUtils.hasText(current.getRefreshToken()) || current.getRefreshExpiresAt() <= nowSeconds()) {
@@ -226,7 +237,7 @@ public class PageAccessService {
     try {
       return sso.checkAccessToken(accessToken, pageCode);
     } catch (SsoClientException e) {
-      // 页面受控链路不可用时不能降级放行，也不能制造无限授权跳转。
+      // 【失败关闭】SSO 不可达时返回错误；不能按 Token 已失效重新授权或直接放行业务页面。
       throw new ResponseStatusException(
           e.isUnavailable() ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.BAD_GATEWAY,
           e.getMessage());
@@ -234,7 +245,7 @@ public class PageAccessService {
   }
 
   private boolean matches(ActiveTokenData checked, StoredToken token, String requestedPageCode) {
-    String expectedPage = config.isPageControlled() ? requestedPageCode : null;
+    String expectedPage = expectedPageCode(requestedPageCode);
     return checked != null
         && checked.isActive()
         && config.getClientId().equals(checked.getClientId())
@@ -243,7 +254,7 @@ public class PageAccessService {
   }
 
   private void validateIssuedToken(TokenData issued, String requestedPageCode) {
-    String expectedPage = config.isPageControlled() ? requestedPageCode : null;
+    String expectedPage = expectedPageCode(requestedPageCode);
     if (issued == null
         || !StringUtils.hasText(issued.getAccessToken())
         || !StringUtils.hasText(issued.getRefreshToken())
@@ -252,6 +263,11 @@ public class PageAccessService {
         || !Objects.equals(expectedPage, issued.getPageCode())) {
       throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SSO 返回的 Token 绑定不匹配");
     }
+  }
+
+  /** 受控模式绑定具体页面；SSO_ONLY 必须保持 page_code=null，不能把业务页面码混进协议。 */
+  private String expectedPageCode(String pageCode) {
+    return config.isPageControlled() ? pageCode : null;
   }
 
   private long nowSeconds() {
