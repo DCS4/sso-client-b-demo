@@ -101,6 +101,15 @@ System 中相应用户必须拥有 permissionCode。页面受控模式下缺失�
 
 ## 4. 外部系统改造的六个组件
 
+**最小移植顺序：** 先实现 `SsoGateway`（协议适配），再复用/改写 `PageAccessService`（业务流程），最后把 `PageCatalog`、`LoginStateStore`、`PageTokenStore` 换成接入方现有的页面登记与持久化方式。示例 `DemoController` 的个人信息展示和 `PageController.render` 的 HTML 页面不是接入要求。以下所有“必须”指行为契约，不要求复制同名 Java 类。
+
+### 4.0 可替换的协议适配接口
+
+`SsoGateway.java` 给出了外部系统后端访问 SSO 的六个操作；`SsoClient.java` 是用 RestTemplate 实现的参考适配器。业务流程 `PageAccessService` **只依赖 SsoGateway**，从而允许其它技术栈/HTTP 库替换协议封装，不必与当前 Spring HTTP 客户端、JeecgBoot 类或展示层耦合。
+
+**不可简化掉的协议规则**：client_secret 只在后端发送；固定回调与服务端登记值一致；code/state 一次性；检查 V2 `success/code/result` 后再看 `result.active`；受控模式核对 client/page/uid；刷新成功后 Access/Refresh 成对替换；SSO 通信异常时拒绝访问而不是静默降级；本地退出不撤销 Portal SID。
+
+
 ### 4.1 后端配置
 
 对应 `SsoConfig.java`：
@@ -131,7 +140,7 @@ Secret 配置只对后端进程可见。容器部署时使用 Secret 挂载或�
 
 ### 4.3 页面守卫
 
-对应 `PageController.java` 和 `PageAccessService.enter()`。
+对应 `PageController.java` 和 `PageAccessService.enter()`。页面渲染只是演示；厂商可在已有 Filter、Interceptor 或业务后端入口调用同等校验，不必复制 Demo 路由。
 
 每次真实页面请求：
 
@@ -148,7 +157,7 @@ Secret 配置只对后端进程可见。容器部署时使用 Secret 挂载或�
 
 ### 4.4 state 仓库
 
-对应 `LoginStateStore.java`。
+对应 `LoginStateStore.java`。可以换成业务系统已有的 Session/Redis 存储，但不能移到浏览器 Local Storage；回调必须先消费 state 再兑 code。
 
 推荐结构：
 
@@ -185,7 +194,7 @@ localSessionId + state -> pageCode, targetPath, expiresAt
 
 ### 4.6 Token 仓库
 
-对应 `PageTokenStore.java`。
+对应 `PageTokenStore.java`。可以替换为共享 Token 仓库，但 AccessToken 与 RefreshToken 必须作为同一授权状态原子替换；仅更换存储不能自动解决多实例并发刷新。
 
 页面受控模式：
 
