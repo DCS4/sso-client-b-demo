@@ -59,7 +59,7 @@ class PageAccessServiceTest {
   @Test
   void cachedTokenIsCheckedOnEveryPageRequest() {
     MockHttpServletRequest request = new MockHttpServletRequest();
-    tokens.put(request.getSession(), page.getCode(), new StoredToken(token("old", "refresh-old"), 1000L));
+    tokens.put(request.getSession(), page.getCode(), new StoredToken(token("old", "refresh-old"), System.currentTimeMillis() / 1000L));
     when(gateway.checkAccessToken("old", page.getCode())).thenReturn(active("user-1"));
 
     assertTrue(access.enter(request, page).isAllowed());
@@ -71,7 +71,7 @@ class PageAccessServiceTest {
   @Test
   void expiredAccessUsesRefreshOnceAndReplacesBothTokens() {
     MockHttpServletRequest request = new MockHttpServletRequest();
-    tokens.put(request.getSession(), page.getCode(), new StoredToken(token("old", "refresh-old"), 1000L));
+    tokens.put(request.getSession(), page.getCode(), new StoredToken(token("old", "refresh-old"), System.currentTimeMillis() / 1000L));
     when(gateway.checkAccessToken("old", page.getCode())).thenReturn(new ActiveTokenData());
     when(gateway.refresh("refresh-old")).thenReturn(token("new", "refresh-new"));
     when(gateway.checkAccessToken("new", page.getCode())).thenReturn(active("user-1"));
@@ -107,7 +107,7 @@ class PageAccessServiceTest {
   @Test
   void gatewayUnavailableMustNotAuthorizeOrRedirectAsIfTokenExpired() {
     MockHttpServletRequest request = new MockHttpServletRequest();
-    tokens.put(request.getSession(), page.getCode(), new StoredToken(token("old", "refresh-old"), 1000L));
+    tokens.put(request.getSession(), page.getCode(), new StoredToken(token("old", "refresh-old"), System.currentTimeMillis() / 1000L));
     when(gateway.checkAccessToken("old", page.getCode()))
         .thenThrow(new SsoClientException("SSO unavailable", true));
 
