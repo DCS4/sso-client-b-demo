@@ -13,6 +13,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>浏览器只持有 HttpOnly 的 JSESSIONID，实际 AccessToken/RefreshToken 保存在
  * HttpSession 对象中。生产多实例应替换为 Redis 等共享存储，并加密静态 Token。</p>
+ *
+ * <p>【接入必要项 5/5：Token 仓库】只替换本类的会话存储实现即可连接业务系统原有
+ * Session/Redis。键由 SsoConfig.tokenKey 决定；Access/Refresh 必须成对保存，不得交给 Vue。</p>
  */
 @Component
 public class PageTokenStore {
@@ -25,6 +28,7 @@ public class PageTokenStore {
     }
   }
 
+  /** 刷新成功后用一个新 StoredToken 整体替换旧 Token 对，禁止分别覆盖两种 Token。 */
   public void put(HttpSession session, String key, StoredToken token) {
     synchronized (session) {
       values(session, true).put(key, token);
