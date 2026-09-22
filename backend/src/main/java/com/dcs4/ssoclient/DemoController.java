@@ -24,7 +24,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-/** 演示页面所需的本地 API；所有 SSO 密钥和 Token 均不会返回给前端。 */
+/**
+ * 演示页面所需的本地 API；所有 SSO 密钥和 Token 均不会返回给前端。
+ * 【接入说明】/api/pages、/api/auth/me 是 Demo 展示 API；厂商只需把唯一回调与
+ * 本地注销接进自己的原有 Controller，不必照搬演示响应结构。
+ */
 @RestController
 public class DemoController {
   private static final Logger log = LoggerFactory.getLogger(DemoController.class);
@@ -45,7 +49,8 @@ public class DemoController {
   }
 
   /**
-   * 所有页面共用的唯一固定回调。回调不渲染页面，只完成后端兑换后 303 回原页面。
+   * 【必须保留语义】所有页面共用的唯一固定回调。回调不渲染页面，
+   * 只完成 state 消费及后端兑换后 303 回服务端白名单原页面。
    */
   @GetMapping("/api/auth/callback")
   public ResponseEntity<Void> callback(
@@ -102,6 +107,7 @@ public class DemoController {
   }
 
   /** 退出 B 的全部本地页面授权，不撤销 Portal 的全局登录。 */
+  // 【本地退出】撤销本系统 Token 并清本地 Session；不能把它当作 Portal 全局退出。
   @PostMapping("/api/auth/logout/system")
   public Map<String, Object> logoutSystem(HttpServletRequest request) {
     LogoutSummary summary = access.logoutSystem(request.getSession(false));
