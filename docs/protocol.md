@@ -52,8 +52,9 @@ redirect_uri=http://B-IP:18080/api/auth/callback
 ```json
 {
   "code": 200,
-  "msg": "ok",
-  "data": {
+  "success": true,
+  "message": "",
+  "result": {
     "access_token": "...",
     "refresh_token": "...",
     "token_type": "Bearer",
@@ -94,7 +95,7 @@ Content-Type: application/json
 }
 ```
 
-只在 `data.active == true` 时放行。无效 Token 通常返回 HTTP 200、业务 `code=500`、`active=false`，不会区分不存在、过期、撤销或权限不足。
+只在 `success == true && result.active == true` 时放行。无效 Token 通常返回 HTTP 200、业务 `code=500`、`success=false`、`result.active=false`，不会区分不存在、过期、撤销或权限不足。
 
 ## 用户信息
 
