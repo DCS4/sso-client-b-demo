@@ -43,8 +43,8 @@ public class PageController {
     Page page = pages.requireByPath(path);
     AccessResult decision = access.enter(request, page);
     if (!decision.isAllowed()) {
-      log.info("[Demo-PageController] 页面未授权，302 跳转至 SSO 认证地址: pageCode={}, redirect={}",
-          page.getCode(), decision.getRedirect());
+      log.debug("[Demo-PageController] 页面未授权，开始 SSO 授权跳转: pageCode={}",
+          page.getCode());
       return ResponseEntity.status(HttpStatus.FOUND).location(decision.getRedirect()).build();
     }
     log.info("[Demo-PageController] 页面授权通过，渲染页面: pageCode={}, user={}",
