@@ -20,6 +20,9 @@ import org.springframework.web.util.HtmlUtils;
  *
  * <p>真实项目可以把相同的 PageAccessService 调用放入拦截器、Filter 或统一页面
  * Controller。关键要求是直接输入原页面 URL 也必须经过后端校验。</p>
+ *
+ * <p>【演示代码】render() 的 HTML、三个 /pages 路由不是 SSO 协议必需；实际接入只需
+ * 在真实业务后端入口执行 access.enter()，放行后再运行原业务逻辑。</p>
  */
 @Controller
 public class PageController {
@@ -35,6 +38,7 @@ public class PageController {
     this.config = config;
   }
 
+  // 【不可省略】在业务页面/后端入口执行校验；不能仅隐藏前端菜单或只保护跳转入口。
   @GetMapping({"/pages/orders", "/pages/reports", "/pages/operations"})
   public ResponseEntity<String> page(HttpServletRequest request) {
     String path = request.getRequestURI().substring(request.getContextPath().length());
