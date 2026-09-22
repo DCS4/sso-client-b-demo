@@ -137,7 +137,7 @@ Secret 配置只对后端进程可见。容器部署时使用 Secret 挂载或�
 
 1. 根据路径找到 page_code；
 2. 从服务端会话取该页面 Token；
-3. 调用 SSO `checkAccessToken`；
+3. 调用 SSO `checkAccessToken`，先核对 `success=true`，再核对 `result.active=true`；
 4. active=true 才执行页面 Controller；
 5. active=false 时尝试一次 RefreshToken；
 6. 刷新成功后保存新 Token 并再次校验；
