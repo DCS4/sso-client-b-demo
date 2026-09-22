@@ -12,8 +12,9 @@ public final class SsoModels {
   @JsonIgnoreProperties(ignoreUnknown = true)
   public static class ApiEnvelope {
     private int code;
-    private String msg;
-    private JsonNode data;
+    private boolean success;
+    private String message;
+    private JsonNode result;
 
     public int getCode() {
       return code;
@@ -23,20 +24,28 @@ public final class SsoModels {
       this.code = code;
     }
 
-    public String getMsg() {
-      return msg;
+    public boolean isSuccess() {
+      return success;
     }
 
-    public void setMsg(String msg) {
-      this.msg = msg;
+    public void setSuccess(boolean success) {
+      this.success = success;
     }
 
-    public JsonNode getData() {
-      return data;
+    public String getMessage() {
+      return message;
     }
 
-    public void setData(JsonNode data) {
-      this.data = data;
+    public void setMessage(String message) {
+      this.message = message;
+    }
+
+    public JsonNode getResult() {
+      return result;
+    }
+
+    public void setResult(JsonNode result) {
+      this.result = result;
     }
   }
 
