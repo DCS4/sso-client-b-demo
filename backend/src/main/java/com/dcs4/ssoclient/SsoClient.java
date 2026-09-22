@@ -64,12 +64,12 @@ public class SsoClient {
       uri.queryParam("page_code", pageCode);
     }
     String result = uri.build().encode().toUriString();
-    log.info("[SsoClient] 生成 authorizeUrl: state={}, pageCode={}, url={}", state, pageCode, result);
+    log.debug("[SsoClient] 已生成授权地址, pageCode={}", pageCode);
     return result;
   }
 
   public TokenData exchangeCode(String code) {
-    log.info("[SsoClient] 正在调用 SSO /token 兑换授权码: code={}", code);
+    log.debug("[SsoClient] 正在兑换一次性授权码");
     MultiValueMap<String, String> form = baseTokenForm("authorization_code");
     form.add("code", code);
     form.add("redirect_uri", config.getCallbackUrl());
@@ -84,8 +84,7 @@ public class SsoClient {
   }
 
   public ActiveTokenData checkAccessToken(String accessToken, String pageCode) {
-    log.info("[SsoClient] 正在调用 SSO /checkAccessToken: pageCode={}, tokenPrefix={}", pageCode,
-        (accessToken != null && accessToken.length() > 6 ? accessToken.substring(0, 6) + "..." : ""));
+    log.debug("[SsoClient] 正在调用 SSO /checkAccessToken: pageCode={}", pageCode);
     config.requireBackendCredentials();
     Map<String, String> body = new LinkedHashMap<String, String>();
     body.put("clientId", config.getClientId());
@@ -95,13 +94,20 @@ public class SsoClient {
       body.put("pageCode", pageCode);
     }
     ApiEnvelope envelope = postJson("/checkAccessToken", body);
-    if (envelope.getData() == null || envelope.getData().isNull()) {
+    if (!envelope.isSuccess() || envelope.getCode() != 200) {
+      // 无效 Token 返回 HTTP 200 + 业务失败，不得按响应体 active=true 绕过失败状态。
+      if (envelope.getCode() != 500) {
+        throw new SsoClientException("SSO Token 校验失败", false);
+      }
+      return new ActiveTokenData();
+    }
+    if (envelope.getResult() == null || envelope.getResult().isNull()) {
       log.warn("[SsoClient] /checkAccessToken 返回空数据 (Token已失效或无权访问)");
       return new ActiveTokenData();
     }
     try {
       // checkAccessToken 的业务 code=500 是“无效”而不是网络异常，按 active=false 处理。
-      ActiveTokenData result = json.treeToValue(envelope.getData(), ActiveTokenData.class);
+      ActiveTokenData result = json.treeToValue(envelope.getResult(), ActiveTokenData.class);
       log.info("[SsoClient] /checkAccessToken 校验结果: active={}, uid={}, pageCode={}",
           result.isActive(), result.getUid(), result.getPageCode());
       return result;
@@ -171,8 +177,8 @@ public class SsoClient {
       }
       return envelope;
     } catch (RestClientResponseException e) {
-      log.error("[SsoClient] SSO 接口返回 HTTP 错误: endpoint={}, status={}, body={}",
-          endpoint, e.getRawStatusCode(), e.getResponseBodyAsString());
+      log.warn("[SsoClient] SSO 接口返回 HTTP 错误: endpoint={}, status={}",
+          endpoint, e.getRawStatusCode());
       boolean unavailable = e.getRawStatusCode() >= 500;
       throw new SsoClientException(
           unavailable ? "SSO 服务暂不可用" : responseMessage(e.getResponseBodyAsString()),
@@ -190,11 +196,11 @@ public class SsoClient {
   }
 
   private <T> T requireData(ApiEnvelope envelope, Class<T> type, String emptyMessage) {
-    if (envelope.getCode() != 200) {
+    if (!envelope.isSuccess() || envelope.getCode() != 200) {
       throw new SsoClientException(
-          StringUtils.hasText(envelope.getMsg()) ? envelope.getMsg() : "SSO 请求失败", false);
+          StringUtils.hasText(envelope.getMessage()) ? envelope.getMessage() : "SSO 请求失败", false);
     }
-    JsonNode data = envelope.getData();
+    JsonNode data = envelope.getResult();
     if (data == null || data.isNull()) {
       throw new SsoClientException(emptyMessage, false);
     }
@@ -208,8 +214,8 @@ public class SsoClient {
   private String responseMessage(String body) {
     try {
       ApiEnvelope envelope = json.readValue(body, ApiEnvelope.class);
-      if (envelope != null && StringUtils.hasText(envelope.getMsg())) {
-        return envelope.getMsg();
+      if (envelope != null && StringUtils.hasText(envelope.getMessage())) {
+        return envelope.getMessage();
       }
       JsonNode node = json.readTree(body);
       if (node != null && node.hasNonNull("error_description")) {
