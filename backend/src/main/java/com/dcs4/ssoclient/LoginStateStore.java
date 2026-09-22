@@ -14,6 +14,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>使用 Map 而不是单一 session 属性，使同一浏览器的多个页签可以同时发起授权；
  * 每个 state 只能消费一次，且不会把任意 target URL 放进浏览器可修改的数据中。</p>
+ *
+ * <p>【接入必要项 4/5：登录事务仓库】真实厂商可以使用其已有会话/Redis 保存同一映射；
+ * 必须保持不可预测、限时、回调先消费再兑 code、目标由服务端登记，不要改为前端传目标 URL。</p>
  */
 @Component
 public class LoginStateStore {
@@ -22,6 +25,7 @@ public class LoginStateStore {
   private static final int MAX_PENDING = 16;
   private final SecureRandom random = new SecureRandom();
 
+  /** 进入未授权页面时创建 state，绑定当前服务端已登记的目标页；多个标签页可以并发授权。 */
   public String begin(HttpSession session, String pageCode, String targetPath) {
     synchronized (session) {
       Map<String, LoginTransaction> values = values(session, true);
