@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>真实项目可以改为数据库或配置中心，但浏览器不能自行提交任意 page_code/target。
  * 同一份映射还用于固定回调后的安全回跳，避免开放重定向。</p>
+ *
+ * <p>【接入必要项 3/5：页面映射】真实业务系统仅替换页面来源（路由/数据库/配置中心），
+ * 保留 path 与 page_code 一一对应以及回调目标白名单。此类的三个页面只是演示数据。</p>
  */
 @Component
 public class PageCatalog {
@@ -24,6 +27,7 @@ public class PageCatalog {
     register(new Page("B_PAGE_03", "运维控制台", "/pages/operations"));
   }
 
+  /** 请求真实页面 URL 时从服务端路径确定 page_code；不能信任浏览器传入的权限码。 */
   public Page requireByPath(String path) {
     Page page = byPath.get(path);
     if (page == null) {
@@ -32,6 +36,7 @@ public class PageCatalog {
     return page;
   }
 
+  /** 单页退出等操作用已登记的码定位页面，拒绝任意未登记码。 */
   public Page requireByCode(String code) {
     Page page = byCode.get(code);
     if (page == null) {
