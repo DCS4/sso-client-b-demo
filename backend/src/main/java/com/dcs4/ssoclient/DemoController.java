@@ -53,9 +53,8 @@ public class DemoController {
       @RequestParam(name = "state", required = false) String state,
       @RequestParam(name = "error", required = false) String error,
       HttpServletRequest request) {
-    log.info("[DemoController] 收到 SSO 回调 /api/auth/callback: code={}, state={}, error={}, Host={}",
-        (code != null ? code.substring(0, Math.min(code.length(), 8)) + "..." : null),
-        state, error, request.getHeader("Host"));
+    log.debug("[DemoController] 收到 SSO 固定回调: hasCode={}, hasState={}, error={}",
+        code != null, state != null, error);
     URI target = access.completeCallback(request, code, state, error);
     log.info("[DemoController] 回调处理完毕，303 重定向到业务页面: {}", target);
     return ResponseEntity.status(HttpStatus.SEE_OTHER).location(target).build();
