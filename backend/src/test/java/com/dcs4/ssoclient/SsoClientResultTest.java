@@ -30,6 +30,7 @@ class SsoClientResultTest {
     when(config.getReadTimeout()).thenReturn(Duration.ofSeconds(2));
     when(config.getClientId()).thenReturn("client-b");
     when(config.getClientSecret()).thenReturn("secret");
+    when(config.getCallbackUrl()).thenReturn("http://127.0.0.1:18080/api/auth/callback");
     when(config.endpoint("/token")).thenReturn("http://127.0.0.1:19089/oauth2Server/oauth2/token");
     when(config.endpoint("/checkAccessToken")).thenReturn("http://127.0.0.1:19089/oauth2Server/oauth2/checkAccessToken");
     sso = new SsoClient(config, new ObjectMapper(), new RestTemplateBuilder());
