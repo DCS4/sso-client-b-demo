@@ -5,6 +5,7 @@ import com.dcs4.ssoclient.SsoModels.ApiEnvelope;
 import com.dcs4.ssoclient.SsoModels.LogoutData;
 import com.dcs4.ssoclient.SsoModels.TokenData;
 import com.dcs4.ssoclient.SsoModels.UserInfo;
+import com.dcs4.ssoclient.SsoGateway.SsoClientException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
@@ -31,10 +32,13 @@ import org.springframework.web.util.UriComponentsBuilder;
  * 外部系统后端对 SSO V2 的唯一 HTTP 封装。
  *
  * <p>业务 Controller 不应自行拼接 client_secret 或 Token 请求；集中封装可以保证
- * 密钥永远不进入浏览器，并统一执行错误处理。</p>
+ * 密钥永远不进入浏览器，并统一执行错误处理。
+ *
+ * <p>【接入必要项】本类是 SsoGateway 的 HTTP 实现；其它技术栈只需按 V2 接口文档
+ * 改写这一层，业务页面、state 与本地 Token 流程无需绑定 RestTemplate。</p></p>
  */
 @Service
-public class SsoClient {
+public class SsoClient implements SsoGateway {
   private static final Logger log = LoggerFactory.getLogger(SsoClient.class);
 
   private final SsoConfig config;
@@ -51,7 +55,8 @@ public class SsoClient {
             .build();
   }
 
-  /** 授权地址只包含公开参数，不包含 client_secret 或任何 Token。 */
+  /** 【授权入口】固定回调、state 和（受控模式下）page_code 均须由后端决定；URL 不含密钥。 */
+  @Override
   public String authorizeUrl(String state, String pageCode) {
     config.requireBackendCredentials();
     UriComponentsBuilder uri =
@@ -68,6 +73,8 @@ public class SsoClient {
     return result;
   }
 
+  @Override
+  /** 【固定回调】一次性 code 只由后端兑换；必须带登记的同一 redirect_uri。 */
   public TokenData exchangeCode(String code) {
     log.debug("[SsoClient] 正在兑换一次性授权码");
     MultiValueMap<String, String> form = baseTokenForm("authorization_code");
@@ -76,6 +83,8 @@ public class SsoClient {
     return requireData(postForm("/token", form), TokenData.class, "SSO 未返回 Token");
   }
 
+  @Override
+  /** 【刷新】Token family 的旧值只消费一次；调用方负责串行刷新和成对替换。 */
   public TokenData refresh(String refreshToken) {
     log.info("[SsoClient] 正在调用 SSO /token 刷新 Token");
     MultiValueMap<String, String> form = baseTokenForm("refresh_token");
@@ -83,6 +92,8 @@ public class SsoClient {
     return requireData(postForm("/token", form), TokenData.class, "SSO 未返回刷新 Token");
   }
 
+  @Override
+  /** 【每次进入页面】后端实时校验；业务外壳 success 与 result.active 必须同时有效。 */
   public ActiveTokenData checkAccessToken(String accessToken, String pageCode) {
     log.debug("[SsoClient] 正在调用 SSO /checkAccessToken: pageCode={}", pageCode);
     config.requireBackendCredentials();
@@ -117,6 +128,8 @@ public class SsoClient {
     }
   }
 
+  @Override
+  /** 【固定回调】用已校验的 AccessToken 获取最小用户信息，不信任浏览器自报身份。 */
   public UserInfo getUserInfo(String accessToken) {
     log.info("[SsoClient] 正在调用 SSO /getUserInfoByOauth2 获取用户信息");
     config.requireBackendCredentials();
@@ -131,6 +144,7 @@ public class SsoClient {
   }
 
   /** 注销的是当前页面 Token family，不会退出 Portal 全局 SID。 */
+  @Override
   public boolean logout(String accessToken) {
     log.info("[SsoClient] 正在调用 SSO /logout 注销页面 Token");
     config.requireBackendCredentials();
@@ -164,6 +178,7 @@ public class SsoClient {
     return exchange(endpoint, new HttpEntity<Map<String, String>>(body, headers));
   }
 
+  /** 【协议错误边界】HTTP 网络错误与 V2 Result 业务失败不能混淆，更不能降级放行。 */
   private ApiEnvelope exchange(String endpoint, HttpEntity<?> entity) {
     try {
       URI uri = URI.create(config.endpoint(endpoint));
@@ -227,22 +242,5 @@ public class SsoClient {
     return "SSO 拒绝请求";
   }
 
-  public static class SsoClientException extends RuntimeException {
-    private static final long serialVersionUID = 1L;
-    private final boolean unavailable;
 
-    public SsoClientException(String message, boolean unavailable) {
-      super(message);
-      this.unavailable = unavailable;
-    }
-
-    public SsoClientException(String message, boolean unavailable, Throwable cause) {
-      super(message, cause);
-      this.unavailable = unavailable;
-    }
-
-    public boolean isUnavailable() {
-      return unavailable;
-    }
-  }
 }
