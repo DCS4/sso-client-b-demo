@@ -48,8 +48,8 @@ public class PageAccessService {
   public AccessResult enter(HttpServletRequest request, Page page) {
     HttpSession session = request.getSession(true);
     String tokenKey = config.tokenKey(page.getCode());
-    log.info("[PageAccessService] 检查页面授权: pageCode={}, path={}, sessionId={}",
-        page.getCode(), page.getPath(), session.getId());
+    log.debug("[PageAccessService] 检查页面授权: pageCode={}, path={}",
+        page.getCode(), page.getPath());
     synchronized (session) {
       StoredToken current = tokens.get(session, tokenKey);
       if (current != null) {
@@ -72,8 +72,7 @@ public class PageAccessService {
       // target 只来自服务端 PageCatalog，不接受浏览器提供的任意 URL。
       String state = states.begin(session, page.getCode(), page.getPath());
       String authUrl = sso.authorizeUrl(state, page.getCode());
-      log.info("[PageAccessService] 生成单点登录授权跳转: state={}, pageCode={}, authUrl={}",
-          state, page.getCode(), authUrl);
+      log.debug("[PageAccessService] 已生成单点登录授权跳转: pageCode={}", page.getCode());
       return AccessResult.redirect(URI.create(authUrl));
     }
   }
@@ -84,28 +83,26 @@ public class PageAccessService {
   public URI completeCallback(
       HttpServletRequest request, String code, String state, String protocolError) {
     HttpSession session = request.getSession(false);
-    log.info("[PageAccessService] 开始处理 SSO 回调 completeCallback: code={}, state={}, error={}, sessionExists={}, sessionId={}",
-        (code != null ? (code.length() > 8 ? code.substring(0, 8) + "..." : code) : null),
-        state, protocolError, (session != null), (session != null ? session.getId() : "null"));
+    log.debug("[PageAccessService] 收到 SSO 回调: hasCode={}, hasState={}, error={}, sessionExists={}",
+        StringUtils.hasText(code), StringUtils.hasText(state), protocolError, session != null);
     LoginTransaction transaction = states.consume(session, state);
     if (transaction == null) {
-      log.error("[PageAccessService] 登录事务不存在、过期或已使用! state={}, session={}. 请检查浏览器访问地址与回调地址的 Host/端口 是否一致(例如 127.0.0.1 vs localhost 会导致 Cookie 隔离)",
-          state, (session != null ? session.getId() : "null"));
+      log.warn("[PageAccessService] 登录事务不存在、过期或已使用; 请核对浏览器访问与回调的 Host");
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "登录事务不存在、过期或已使用");
     }
     if (StringUtils.hasText(protocolError)) {
-      log.error("[PageAccessService] SSO 拒绝授权: protocolError={}, state={}, pageCode={}",
-          protocolError, state, transaction.getPageCode());
+      log.warn("[PageAccessService] SSO 拒绝授权: protocolError={}, pageCode={}",
+          protocolError, transaction.getPageCode());
       HttpStatus status = "access_denied".equals(protocolError) ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST;
       throw new ResponseStatusException(status, "SSO 拒绝本次页面授权：" + protocolError);
     }
     if (!StringUtils.hasText(code)) {
-      log.error("[PageAccessService] SSO 未返回授权码 code: state={}", state);
+      log.warn("[PageAccessService] SSO 回调缺少授权码");
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "SSO 未返回授权码");
     }
 
     try {
-      log.info("[PageAccessService] 准备通过 code 换取 Token: code={}", code);
+      log.debug("[PageAccessService] 正在兑换一次性授权码");
       TokenData issued = sso.exchangeCode(code);
       log.info("[PageAccessService] 成功换取 Token: openid={}, pageCode={}, expiresIn={}",
           issued.getOpenid(), issued.getPageCode(), issued.getExpiresIn());
