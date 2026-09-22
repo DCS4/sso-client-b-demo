@@ -4,9 +4,9 @@
 
 > V2 分支：`codex/sso-v2-client-demo`
 >
-> 服务端分支：`DCS4/yth codex/sso-integration`
+> 服务端分支：`DCS4/yth feat/sso-all-in-one`（待合并修复：`codex/sso-v2-config-hardening-20260922`）
 
-服务端正式接口文档：`DCS4/yth/docs/SSO-V2接口文档.md`。
+服务端接口文档：`DCS4/yth/docs/SSO-V2接口文档.md`。当前联调版本将业务接口响应外壳统一为 JeecgBoot 的 `success/message/code/result`；外部客户端只解析 `result`，并且必须同时检查 `success=true` 和校验数据 `result.active=true`，不能继续按照旧版 `code/msg/data` 处理。
 
 ## 演示内容
 
