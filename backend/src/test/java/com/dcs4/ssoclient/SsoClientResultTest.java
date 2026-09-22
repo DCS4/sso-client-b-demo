@@ -77,7 +77,7 @@ class SsoClientResultTest {
     server.expect(requestTo("http://127.0.0.1:19089/oauth2Server/oauth2/checkAccessToken"))
         .andRespond(withSuccess("{\"code\":200,\"msg\":\"ok\","
             + "\"data\":{\"active\":true}}", MediaType.APPLICATION_JSON));
-    assertThrows(SsoClient.SsoClientException.class, () -> sso.checkAccessToken("invalid", "B_PAGE_01"));
+    assertThrows(SsoGateway.SsoClientException.class, () -> sso.checkAccessToken("invalid", "B_PAGE_01"));
     server.verify();
   }
 }
