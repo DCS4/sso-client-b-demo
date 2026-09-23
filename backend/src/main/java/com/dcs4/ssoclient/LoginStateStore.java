@@ -39,9 +39,9 @@ public class LoginStateStore {
         iterator.remove();
       }
       String state = randomState();
-      values.put(
-          state,
-          new LoginTransaction(pageCode, targetPath, System.currentTimeMillis() + TTL_MILLIS));
+      long startedAtMillis = System.currentTimeMillis();
+      values.put(state, new LoginTransaction(
+          pageCode, targetPath, startedAtMillis, startedAtMillis + TTL_MILLIS));
       return state;
     }
   }
@@ -99,11 +99,15 @@ public class LoginStateStore {
     private static final long serialVersionUID = 1L;
     private final String pageCode;
     private final String targetPath;
+    // 只用于跨浏览器跳转的粗粒度耗时观测，不参与 state 过期或消费判断。
+    private final long startedAtMillis;
     private final long expiresAt;
 
-    private LoginTransaction(String pageCode, String targetPath, long expiresAt) {
+    private LoginTransaction(
+        String pageCode, String targetPath, long startedAtMillis, long expiresAt) {
       this.pageCode = pageCode;
       this.targetPath = targetPath;
+      this.startedAtMillis = startedAtMillis;
       this.expiresAt = expiresAt;
     }
 
@@ -113,6 +117,10 @@ public class LoginStateStore {
 
     public String getTargetPath() {
       return targetPath;
+    }
+
+    public long getStartedAtMillis() {
+      return startedAtMillis;
     }
 
     public long getExpiresAt() {
