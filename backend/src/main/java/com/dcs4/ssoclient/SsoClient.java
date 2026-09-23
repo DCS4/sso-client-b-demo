@@ -9,6 +9,7 @@ import com.dcs4.ssoclient.SsoGateway.SsoClientException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
+import java.util.concurrent.TimeUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -180,11 +181,14 @@ public class SsoClient implements SsoGateway {
 
   /** 【协议错误边界】HTTP 网络错误与 V2 Result 业务失败不能混淆，更不能降级放行。 */
   private ApiEnvelope exchange(String endpoint, HttpEntity<?> entity) {
+    // nanoTime 只测本次 B -> SSO 的 HTTP 往返，不含浏览器跳转和用户输入密码时间。
+    long startNanos = System.nanoTime();
     try {
       URI uri = URI.create(config.endpoint(endpoint));
       log.info("[SsoClient] 向 SSO 发送 HTTP 请求: endpoint={}", endpoint);
       ResponseEntity<String> response = http.exchange(uri, HttpMethod.POST, entity, String.class);
-      log.info("[SsoClient] 收到 SSO HTTP 响应: endpoint={}, status={}", endpoint, response.getStatusCodeValue());
+      log.info("[SSO-Timing] HTTP 往返: endpoint={}, status={}, elapsedMs={}",
+          endpoint, response.getStatusCodeValue(), elapsedMs(startNanos));
       ApiEnvelope envelope = json.readValue(response.getBody(), ApiEnvelope.class);
       if (envelope == null) {
         log.error("[SsoClient] SSO 返回空响应体: endpoint={}", endpoint);
@@ -192,15 +196,16 @@ public class SsoClient implements SsoGateway {
       }
       return envelope;
     } catch (RestClientResponseException e) {
-      log.warn("[SsoClient] SSO 接口返回 HTTP 错误: endpoint={}, status={}",
-          endpoint, e.getRawStatusCode());
+      log.warn("[SSO-Timing] HTTP 错误: endpoint={}, status={}, elapsedMs={}",
+          endpoint, e.getRawStatusCode(), elapsedMs(startNanos));
       boolean unavailable = e.getRawStatusCode() >= 500;
       throw new SsoClientException(
           unavailable ? "SSO 服务暂不可用" : responseMessage(e.getResponseBodyAsString()),
           unavailable,
           e);
     } catch (ResourceAccessException e) {
-      log.error("[SsoClient] 连接 SSO 服务超时或失败: endpoint={}, error={}", endpoint, e.getMessage());
+      log.error("[SSO-Timing] SSO 连接失败: endpoint={}, elapsedMs={}, error={}",
+          endpoint, elapsedMs(startNanos), e.getMessage());
       throw new SsoClientException("无法连接 SSO 服务", true, e);
     } catch (SsoClientException e) {
       throw e;
@@ -224,6 +229,10 @@ public class SsoClient implements SsoGateway {
     } catch (Exception e) {
       throw new SsoClientException("SSO 响应字段不完整", false, e);
     }
+  }
+
+  private long elapsedMs(long startNanos) {
+    return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
   }
 
   private String responseMessage(String body) {
