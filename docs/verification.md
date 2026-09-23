@@ -29,3 +29,22 @@
 10. 日志、浏览器和前端构建产物中不存在 Secret/Token。
 
 本次按项目约定只提交代码与文档，未把无法连接真实 Portal/SSO 的本地运行结果当作端到端验收。
+
+## 分阶段耗时日志（SSO-Timing）
+
+这次只加观测点，没有调整 code/state 的一次性语义、回调位置或 Token 校验/刷新逻辑。B 后端 INFO 日志中搜索 `[SSO-Timing]`：
+
+| 日志字段 | 从哪里到哪里 | 是否包含用户输入密码/浏览器耗时 |
+| --- | --- | --- |
+| `backendGuardMs` | B 收到页面请求 → 判定需要重定向至 SSO | 否 |
+| `browserRoundTripMs` | B 首次生成本次 state → B 完成固定回调 | **是**，包含浏览器跳转、Portal 输入账号密码/验证码、登录等待以及回调服务端处理；因此它不是“SSO 接口耗时” |
+| `callbackProcessingMs` | B 收到固定回调 → 成功完成 code 兑换、Token 校验、userinfo、保存本地状态 | 否，只有 B 固定回调处理 |
+| `endpoint=..., elapsedMs` | B 向 SSO 发送一次 HTTP 请求 → 收到该请求的响应（或请求出错） | 否；分别对应 `/token`、`/checkAccessToken`、`/getUserInfoByOauth2` 等 |
+| `backendPageMs` | B 再次收到真实业务页面请求 → 完成服务端校验、准备返回 HTML | 否；不包含浏览器下载和渲染 |
+
+**推荐复测步骤**：重新启动 B，打开新的隐身窗口，从 `/pages/orders` 开始一次新授权；记录本次 `browserRoundTripMs` 和三条核心 HTTP 耗时。进入页面后再刷新一次，对比 `backendPageMs` 与 `/checkAccessToken` 往返耗时。随后访问已有授权的 PAGE_02 和无权限的 PAGE_03，检查其最终结果没有变化。
+
+**解释结果时不要混算**：`browserRoundTripMs` 已经包含回调阶段的 `callbackProcessingMs`；后者又包含 `/token`、`/checkAccessToken` 和 `/getUserInfoByOauth2` 各次 HTTP 往返。首次页面的 `backendGuardMs`、授权往返和最终页面的 `backendPageMs` 可用于分析阶段，但仍不等于浏览器端从点击到完成渲染的精确耗时。要取得完整用户感知耗时，需另用浏览器 Network/Performance 记录。
+
+计时日志只记录页面代码、协议端点名、状态码与耗时；不得记录 `state`、`code`、完整授权 URL、Token 或 `client_secret`。如果同一浏览器开了多个授权页签，按页面码及发生时间配对，仅凭时间接近并不能严格区分并发的同页请求。本 Demo 的 state 仍在单机 HttpSession；多实例需按接入指南替换共享存储/锁。
+
