@@ -12,10 +12,17 @@ class LoginStateStoreTest {
   void stateIsRandomAndCanOnlyBeConsumedOnce() {
     LoginStateStore store = new LoginStateStore();
     MockHttpSession session = new MockHttpSession();
+    long before = System.currentTimeMillis();
     String state = store.begin(session, "B_PAGE_01", "/pages/orders");
+    long after = System.currentTimeMillis();
 
     assertTrue(state.length() >= 16);
-    assertEquals("B_PAGE_01", store.consume(session, state).getPageCode());
+    LoginStateStore.LoginTransaction transaction = store.consume(session, state);
+    assertEquals("B_PAGE_01", transaction.getPageCode());
+    assertTrue(transaction.getStartedAtMillis() >= before);
+    assertTrue(transaction.getStartedAtMillis() <= after);
+    assertEquals(10L * 60L * 1000L,
+        transaction.getExpiresAt() - transaction.getStartedAtMillis());
     assertNull(store.consume(session, state));
   }
 }
