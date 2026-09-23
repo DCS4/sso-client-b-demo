@@ -4,6 +4,7 @@ import com.dcs4.ssoclient.PageAccessService.AccessResult;
 import com.dcs4.ssoclient.PageCatalog.Page;
 import com.dcs4.ssoclient.SsoModels.UserInfo;
 import javax.servlet.http.HttpServletRequest;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.CacheControl;
@@ -41,23 +42,32 @@ public class PageController {
   // 【不可省略】在业务页面/后端入口执行校验；不能仅隐藏前端菜单或只保护跳转入口。
   @GetMapping({"/pages/orders", "/pages/reports", "/pages/operations"})
   public ResponseEntity<String> page(HttpServletRequest request) {
+    long pageStartNanos = System.nanoTime();
     String path = request.getRequestURI().substring(request.getContextPath().length());
     log.info("[Demo-PageController] 用户请求业务页面: URI={}, RemoteAddr={}, Host={}",
         path, request.getRemoteAddr(), request.getHeader("Host"));
     Page page = pages.requireByPath(path);
     AccessResult decision = access.enter(request, page);
     if (!decision.isAllowed()) {
-      log.debug("[Demo-PageController] 页面未授权，开始 SSO 授权跳转: pageCode={}",
-          page.getCode());
+      log.info("[SSO-Timing] 页面请求转授权: pageCode={}, backendGuardMs={}",
+          page.getCode(), elapsedMs(pageStartNanos));
       return ResponseEntity.status(HttpStatus.FOUND).location(decision.getRedirect()).build();
     }
     log.info("[Demo-PageController] 页面授权通过，渲染页面: pageCode={}, user={}",
         page.getCode(), decision.getUser() != null ? decision.getUser().getName() : "已认证");
+    String html = render(page, decision.getUser());
+    log.info("[SSO-Timing] 页面渲染响应: pageCode={}, backendPageMs={}",
+        page.getCode(), elapsedMs(pageStartNanos));
     return ResponseEntity.ok()
         .contentType(MediaType.TEXT_HTML)
         .cacheControl(CacheControl.noStore())
         .header(HttpHeaders.PRAGMA, "no-cache")
-        .body(render(page, decision.getUser()));
+        .body(html);
+  }
+
+  /** 本次 B 后端页面请求耗时：不包含浏览器下载和绘制页面的时间。 */
+  private long elapsedMs(long startNanos) {
+    return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
   }
 
   private String render(Page page, UserInfo user) {
