@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 import org.slf4j.Logger;
@@ -78,7 +79,8 @@ public class PageAccessService {
       // 【必要】state 绑定服务端 pageCode/targetPath：浏览器不能指定回跳位置或越权页面。
       String state = states.begin(session, page.getCode(), page.getPath());
       String authUrl = sso.authorizeUrl(state, page.getCode());
-      log.debug("[PageAccessService] 已生成单点登录授权跳转: pageCode={}", page.getCode());
+      // 只记页面编码和时间；不要记录 state、code、授权 URL（其中包含一次性参数）。
+      log.info("[SSO-Timing] 开始浏览器授权往返: pageCode={}", page.getCode());
       return AccessResult.redirect(URI.create(authUrl));
     }
   }
@@ -89,6 +91,7 @@ public class PageAccessService {
    */
   public URI completeCallback(
       HttpServletRequest request, String code, String state, String protocolError) {
+    long callbackStartNanos = System.nanoTime();
     HttpSession session = request.getSession(false);
     log.debug("[PageAccessService] 收到 SSO 回调: hasCode={}, hasState={}, error={}, sessionExists={}",
         StringUtils.hasText(code), StringUtils.hasText(state), protocolError, session != null);
@@ -99,8 +102,8 @@ public class PageAccessService {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "登录事务不存在、过期或已使用");
     }
     if (StringUtils.hasText(protocolError)) {
-      log.warn("[PageAccessService] SSO 拒绝授权: protocolError={}, pageCode={}",
-          protocolError, transaction.getPageCode());
+      log.warn("[SSO-Timing] 授权拒绝: pageCode={}, error={}, browserRoundTripMs={}",
+          transaction.getPageCode(), protocolError, browserRoundTripMs(transaction));
       HttpStatus status = "access_denied".equals(protocolError) ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST;
       throw new ResponseStatusException(status, "SSO 拒绝本次页面授权：" + protocolError);
     }
@@ -140,6 +143,9 @@ public class PageAccessService {
       request.changeSessionId();
       tokens.put(session, config.tokenKey(transaction.getPageCode()), stored);
       session.setAttribute(USER_ATTRIBUTE, user);
+      log.info("[SSO-Timing] 固定回调完成: pageCode={}, browserRoundTripMs={}, callbackProcessingMs={}",
+          transaction.getPageCode(), browserRoundTripMs(transaction),
+          TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - callbackStartNanos));
       log.info("[PageAccessService] 登录流程成功完成，即将跳转目标页面: {}", transaction.getTargetPath());
       return URI.create(transaction.getTargetPath());
     } catch (SsoClientException e) {
@@ -268,6 +274,12 @@ public class PageAccessService {
   /** 受控模式绑定具体页面；SSO_ONLY 必须保持 page_code=null，不能把业务页面码混进协议。 */
   private String expectedPageCode(String pageCode) {
     return config.isPageControlled() ? pageCode : null;
+  }
+
+  /** 从生成 state 到回调完成的墙钟时间：包含浏览器跳转、Portal 登录等待及 B 回调处理。 */
+  private long browserRoundTripMs(LoginTransaction transaction) {
+    long startedAt = transaction.getStartedAtMillis();
+    return startedAt > 0L ? Math.max(0L, System.currentTimeMillis() - startedAt) : -1L;
   }
 
   private long nowSeconds() {
