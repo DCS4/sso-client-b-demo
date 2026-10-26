@@ -2,10 +2,12 @@
 
 本文供运行 B Demo 时快速查阅。权威契约位于 `DCS4/yth` 的 `docs/SSO-V2接口文档.md`，服务端与示例均不兼容旧 `/sso/v1` 协议。
 
+前端调用 B 系统的本地接口见[前端说明](../frontend/README.md)。本文列出的是 B 后端访问远端 SSO 的契约，接口和响应格式不要混用。
+
 ## 公共前缀
 
 ```text
-http://SSO-IP:10089/oauth2Server/oauth2
+http://SSO-IP:19089/oauth2Server/oauth2
 ```
 
 | 方法 | 路径 | 调用方 |
@@ -23,7 +25,7 @@ http://SSO-IP:10089/oauth2Server/oauth2
 ```http
 GET /authorize?response_type=code
   &client_id=client_xxx
-  &redirect_uri=http%3A%2F%2FB-IP%3A18080%2Fapi%2Fauth%2Fcallback
+  &redirect_uri=http%3A%2F%2FB-IP%3A18085%2Fapi%2Fauth%2Fcallback
   &state=RANDOM_STATE
   &page_code=B_PAGE_01
 ```
@@ -46,7 +48,7 @@ grant_type=authorization_code
 client_id=client_xxx
 client_secret=...
 code=...
-redirect_uri=http://B-IP:18080/api/auth/callback
+redirect_uri=http://B-IP:18085/api/auth/callback
 ```
 
 ```json
@@ -80,6 +82,8 @@ refresh_token=...
 ```
 
 成功后 AccessToken 和 RefreshToken 都会变化。旧 RefreshToken 立即失效，重放旧值会撤销整个 Token family；客户端必须串行刷新并原子替换 Token 对。
+
+刷新结果的绑定异常、刷新请求通信异常或刷新后的新 Token 校验通信异常时，示例会清除该组本地 Token。通信异常的当前请求返回 503；绑定异常返回协议错误。下一次请求重新开始授权，不重用结果不确定的旧 RefreshToken。
 
 ## 页面校验
 

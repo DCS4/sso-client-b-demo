@@ -1,4 +1,4 @@
-package com.dcs4.ssoclient;
+package com.dcs4.ssoclient.sso;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;

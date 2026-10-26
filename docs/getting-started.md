@@ -1,0 +1,158 @@
+# 新手操作手册
+
+目标：先运行 B 系统，再从“订单查询”走完一次 SSO 登录并回到业务页面。这里的操作对象是接入示例；SSO 服务和统一登录页需要由现有环境提供。
+
+## 1. 先认识三个角色
+
+| 名称 | 负责什么 |
+| --- | --- |
+| 浏览器 / Vue 首页 | 展示链接、会话摘要，执行整页导航 |
+| B 系统 | 你正在运行的接入方；保存 Token，处理回调和页面访问 |
+| SSO / Portal | 远端统一认证服务和登录界面；登录账号由其管理 |
+
+B 不接收用户密码。用户在 Portal 登录后，SSO 把一次性授权码送到 B 的固定回调；B 后端再用它兑换 Token。
+
+## 2. 准备运行工具和 SSO 信息
+
+在终端检查：
+
+```text
+java -version
+mvn -version
+node -v
+npm -v
+```
+
+需要 JDK 8、Maven 和 Node.js。Node 范围以 `frontend/package.json` 为准：`^22.18.0 || >=24.12.0`，可使用符合要求的 24.x。第一次构建还需能访问依赖仓库。
+
+向 SSO 管理员取得：公共接口前缀、client_id、client_secret、可用测试账号、客户端认证模式。约定 B 系统地址和固定回调后再开始。没有这些信息时，可以阅读、构建和运行本地测试，但无法完成真实登录。
+
+本手册优先使用单 JAR 运行，前后端从同一个地址访问。示例地址为 `http://localhost:18085`；如果浏览器在另一台机器上，统一换成 B 机器的 IP 或域名。
+
+## 3. 在 SSO 登记客户端
+
+让管理员登记以下信息：
+
+| 项目 | 本机单 JAR 示例 |
+| --- | --- |
+| 系统地址 | `http://localhost:18085` |
+| 回调路径 | `/api/auth/callback` |
+| 最终完整回调 | `http://localhost:18085/api/auth/callback` |
+| 认证模式 | 与稍后配置的 SSO_AUTH_MODE 一致 |
+
+项目默认 `PAGE_CONTROLLED`。该模式还要登记下面三个页面，并给测试用户分配权限：
+
+| 页面 | page_code | page_path | 示例 permission_code |
+| --- | --- | --- | --- |
+| 订单查询 | `B_PAGE_01` | `/pages/orders` | `b:orders:view` |
+| 经营报表 | `B_PAGE_02` | `/pages/reports` | `b:reports:view` |
+| 运维控制台 | `B_PAGE_03` | `/pages/operations` | `b:operations:view` |
+
+如果先学习普通单点登录，可让管理员把客户端设为 `SSO_ONLY`，本地也填相同值，并跳过 SSO 页面登记。具体操作见 [SSO_ONLY 教程](tutorials/sso-only.md)。管理员使用的登记字段示例保留在[接入指南](integration-guide.md#3-管理端准备)。
+
+## 4. 填写本地配置
+
+在仓库根目录复制 `.env.example` 为 `.env`。已有真实 `.env` 时直接编辑，避免覆盖。
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Linux/macOS 对应 `cp .env.example .env`。用文本编辑器填写：
+
+```properties
+SSO_BASE_URL=http://localhost:19089/oauth2Server/oauth2
+SSO_CLIENT_ID=管理员提供的client_id
+SSO_CLIENT_SECRET=管理员提供的client_secret
+B_CALLBACK_URL=http://localhost:18085/api/auth/callback
+SSO_AUTH_MODE=PAGE_CONTROLLED
+```
+
+第一行地址也要换成管理员提供的实际值。密钥只保存在后端配置；其余可选项和配置加载位置见[配置说明](configuration.md)。修改后重启后端。
+
+## 5. 构建并运行
+
+在仓库根目录运行打包脚本。它依次安装前端依赖、构建 Vue、复制到后端静态目录、执行后端 `clean verify` 并生成 JAR。
+
+Windows PowerShell：
+
+```powershell
+.\scripts\package.ps1
+java -jar backend/target/sso-client-b-demo-0.1.0-SNAPSHOT.jar
+```
+
+Linux/macOS：
+
+```bash
+bash scripts/package.sh
+java -jar backend/target/sso-client-b-demo-0.1.0-SNAPSHOT.jar
+```
+
+保持这个终端运行，浏览器打开 [http://localhost:18085](http://localhost:18085)。出现“业务系统 B”和三个页面链接表示首页可以访问；此时还没有验证远端 SSO 是否配置正确。
+
+## 6. 完成第一次登录
+
+1. 点击“订单查询”。使用普通链接跳转，无需先点击独立的登录按钮。
+2. B 后端发现该会话没有可用 Token，记录本次目标并返回 302。
+3. 浏览器进入 SSO；没有全局登录时显示 Portal 登录页，已有登录时可能直接授权。
+4. SSO 把浏览器带到 `/api/auth/callback?code=...&state=...`。
+5. B 后端消费 state，兑换和校验 Token，取得用户信息并保存到本地 Session。
+6. 回调返回 303，浏览器再次请求 `/pages/orders`。
+7. B 后端实时校验通过后显示订单示例页。
+8. 点击“返回 B 系统首页”，可看到本地用户摘要、模式和 Token 数。
+
+刷新订单页会再次调用 SSO 校验；正常有效的 Token 会复用。两种模式下访问第二个页面的区别，见[模式详解](auth-modes.md)。
+
+浏览器只持有本地会话 Cookie；code 和 state 会出现在回调地址中，但 SSO 的 AccessToken、RefreshToken 和 client_secret 不会返回给 Vue。
+
+## 7. 查看过程和退出
+
+浏览器 Network 中关注 `/pages/orders`、授权跳转、固定回调及最终页面请求。后端日志中的 `[SSO-Timing]` 用于观察各阶段耗时，含义见[验证说明](verification.md)。不要把带 code/state 的完整回调地址当作可复用登录链接。
+
+首页点击“退出 B 系统”，前端会先获取 CSRF Token，再 POST 本地退出接口。B 清理本地会话并尝试撤销自己保存的 Token；Portal 全局登录仍可能存在，因此再次点击业务页时静默登录是正常现象。
+
+## 8. 修改前端时：双进程开发
+
+这种方式不需要每次复制 Vue 静态文件。浏览器入口改为 Vite 的 `http://localhost:5173`，后端仍监听 18085。
+
+1. 将 SSO 登记的系统地址改为 `http://localhost:5173`，回调路径仍为 `/api/auth/callback`。
+2. 将 `.env` 的 `B_CALLBACK_URL` 改为 `http://localhost:5173/api/auth/callback`。
+3. 第一个终端运行后端：
+
+```bash
+cd backend
+mvn clean spring-boot:run
+```
+
+4. 第二个终端运行前端：
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+5. 打开 [http://localhost:5173](http://localhost:5173)，重新发起登录。`/api` 和 `/pages` 都由 Vite 代理到后端，因此回调和页面守卫仍由 B 后端执行。
+
+不要从 5173 开始却回调到 18085，否则回调后的“返回首页”会落到后端；干净检出的双进程开发环境还没有后端静态首页。切回单 JAR 时同步恢复系统登记和回调为 18085。
+
+`npm run preview` 仅预览前端构建产物，没有本示例的开发代理，不用于完整 SSO 联调。
+
+## 9. 常见问题
+
+| 现象 | 优先检查 |
+| --- | --- |
+| `mvn` / `java` / `npm` 找不到 | 工具是否安装，当前终端 PATH 是否已生效 |
+| Node 版本或依赖安装错误 | Node 是否满足 package.json，依赖仓库是否可访问 |
+| 5173 或 18085 被占用 | 关闭旧进程；更换端口时同步修改代理和回调登记 |
+| 首页正常，点击页面后 500 | .env 是否加载，密钥是否仍是占位值，后端日志是否提示配置缺失 |
+| SSO 返回客户端或回调无效 | client_id、密钥、完整回调和模式是否与登记逐项一致 |
+| 登录事务不存在、过期或已使用 | 是否刷新/重复打开回调；首页与回调 Host 是否一致；从首页重新开始 |
+| `access_denied` / 403 | 受控模式的页面、权限和用户授权是否配置齐全；回调拒绝不会自动循环登录 |
+| 503 或连接超时 | B 后端能否访问 SSO 公共接口，地址是否误填 Portal 网页 |
+| 登录后返回首页 404 | 是否混用了 5173/18085，或单 JAR 构建时未包含 Vue 静态文件 |
+| 本地 POST 返回 403 | 是否先获取同一会话的 CSRF Token 并带 X-CSRF-TOKEN 请求头 |
+
+## 10. 接下来做什么
+
+先完成对应模式教程，再按[新增页面与 API](tutorials/add-page-and-api.md)添加自己的入口。前端开发者阅读[接口说明](../frontend/README.md)；要迁入已有系统时再读[接入指南](integration-guide.md)。

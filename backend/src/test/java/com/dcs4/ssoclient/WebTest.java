@@ -1,5 +1,6 @@
 package com.dcs4.ssoclient;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -39,5 +40,20 @@ class WebTest {
     mvc.perform(get("/api/csrf"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.token").isNotEmpty());
+  }
+
+  @Test
+  void fixedCallbackWithoutStateKeepsItsBadRequestResponse() throws Exception {
+    mvc.perform(get("/api/auth/callback"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("登录事务不存在、过期或已使用"));
+  }
+
+  @Test
+  void systemLogoutWithCsrfKeepsItsSummaryResponse() throws Exception {
+    mvc.perform(post("/api/auth/logout/system").with(csrf()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.attempted").value(0))
+        .andExpect(jsonPath("$.confirmed").value(0));
   }
 }

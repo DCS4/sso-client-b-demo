@@ -1,11 +1,11 @@
-package com.dcs4.ssoclient;
+package com.dcs4.ssoclient.sso;
 
-import com.dcs4.ssoclient.SsoModels.ActiveTokenData;
-import com.dcs4.ssoclient.SsoModels.TokenData;
-import com.dcs4.ssoclient.SsoModels.UserInfo;
+import com.dcs4.ssoclient.sso.SsoModels.ActiveTokenData;
+import com.dcs4.ssoclient.sso.SsoModels.TokenData;
+import com.dcs4.ssoclient.sso.SsoModels.UserInfo;
 
 /**
- * 【接入必要项 1/5：SSO 协议适配边界】
+ * 【接入核心组件：SSO 协议适配边界】
  *
  * <p>业务流程只依赖本接口，不关心 HTTP 表单、JSON 字段、client_secret 或具体 HTTP 客户端。
  * 其它厂商可以让现有后端 HTTP 客户端实现本接口；协议字段及错误处理参见 SsoClient。

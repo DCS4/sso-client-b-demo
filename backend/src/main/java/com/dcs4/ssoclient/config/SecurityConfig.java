@@ -1,4 +1,4 @@
-package com.dcs4.ssoclient;
+package com.dcs4.ssoclient.config;
 
 import org.springframework.context.annotation.*;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -6,6 +6,7 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 public class SecurityConfig {
+  // 页面授权由 PageAccessService.enter 显式执行；permitAll 不代表新增业务接口自动受保护。
   @Bean
   SecurityFilterChain security(HttpSecurity http) throws Exception {
     http.authorizeRequests()

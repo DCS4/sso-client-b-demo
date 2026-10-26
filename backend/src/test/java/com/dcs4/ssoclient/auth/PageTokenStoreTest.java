@@ -1,17 +1,16 @@
-package com.dcs4.ssoclient;
+package com.dcs4.ssoclient.auth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-import com.dcs4.ssoclient.SsoModels.StoredToken;
-import com.dcs4.ssoclient.SsoModels.TokenData;
-import java.lang.reflect.Field;
+import com.dcs4.ssoclient.sso.SsoModels.StoredToken;
+import com.dcs4.ssoclient.sso.SsoModels.TokenData;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpSession;
 
 class PageTokenStoreTest {
   @Test
-  void tokensAreSeparatedByPageCodeInsideServerSession() throws Exception {
+  void tokensAreSeparatedByPageCodeInsideServerSession() {
     PageTokenStore store = new PageTokenStore();
     MockHttpSession session = new MockHttpSession();
     StoredToken first = token("access-1", "refresh-1", "B_PAGE_01");
@@ -26,20 +25,14 @@ class PageTokenStoreTest {
     assertNull(store.get(session, "B_PAGE_01"));
   }
 
-  private StoredToken token(String access, String refresh, String page) throws Exception {
+  private StoredToken token(String access, String refresh, String page) {
     TokenData data = new TokenData();
-    set(data, "accessToken", access);
-    set(data, "refreshToken", refresh);
-    set(data, "pageCode", page);
-    set(data, "openid", "user-1");
-    set(data, "expiresIn", Long.valueOf(60));
-    set(data, "refreshExpiresIn", Long.valueOf(120));
+    data.setAccessToken(access);
+    data.setRefreshToken(refresh);
+    data.setPageCode(page);
+    data.setOpenid("user-1");
+    data.setExpiresIn(60L);
+    data.setRefreshExpiresIn(120L);
     return new StoredToken(data, 1000L);
-  }
-
-  private void set(Object target, String name, Object value) throws Exception {
-    Field field = target.getClass().getDeclaredField(name);
-    field.setAccessible(true);
-    field.set(target, value);
   }
 }

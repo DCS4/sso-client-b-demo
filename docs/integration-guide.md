@@ -1,5 +1,7 @@
 # 外部系统详细接入指南
 
+本文用于把示例迁入已有业务系统。第一次运行请先读[新手操作手册](getting-started.md)；配置以[配置说明](configuration.md)为准，模式差异见[模式详解](auth-modes.md)，前端约定见[前端接入说明](../frontend/README.md)。
+
 ## 1. 适用范围
 
 本指南面向需要接入 SSO V2 的普通 Web 系统。示例使用 JDK 8 / Spring Boot 2.7，但结构同样适用于 .NET、Go、PHP、Node.js 或其它后端：
@@ -54,7 +56,7 @@ SSO 服务端和外部系统生命周期不同：
 ```json
 {
   "sysName": "B系统",
-  "sysAddress": "http://192.9.230.80:18080",
+  "sysAddress": "http://localhost:18085",
   "callbackAddress": "/api/auth/callback",
   "authMode": "PAGE_CONTROLLED",
   "status": 1,
@@ -101,7 +103,7 @@ System 中相应用户必须拥有 permissionCode。页面受控模式下缺失�
 
 ## 4. 外部系统改造的六个组件
 
-**最小移植顺序：** 先实现 `SsoGateway`（协议适配），再复用/改写 `PageAccessService`（业务流程），最后把 `PageCatalog`、`LoginStateStore`、`PageTokenStore` 换成接入方现有的页面登记与持久化方式。示例 `DemoController` 的个人信息展示和 `PageController.render` 的 HTML 页面不是接入要求。以下所有“必须”指行为契约，不要求复制同名 Java 类。
+**最小移植顺序：** 先实现 `SsoGateway`（协议适配），再复用/改写 `PageAccessService`（业务流程），最后把 `PageCatalog`、`LoginStateStore`、`PageTokenStore` 换成接入方现有的页面登记与持久化方式。示例 `demo/DemoController` 的个人信息展示和 `demo/PageView.render` 的 HTML 页面不是接入要求；固定回调位于 `auth/AuthController`。以下所有“必须”指行为契约，不要求复制同名 Java 类。
 
 ### 4.0 可替换的协议适配接口
 
@@ -149,7 +151,7 @@ Secret 配置只对后端进程可见。容器部署时使用 Secret 挂载或�
 3. 调用 SSO `checkAccessToken`，先核对 `success=true`，再核对 `result.active=true`；
 4. active=true 才执行页面 Controller；
 5. active=false 时尝试一次 RefreshToken；
-6. 刷新成功后保存新 Token 并再次校验；
+6. 刷新成功后校验新 Token，通过后成对保存；刷新结果绑定异常、刷新通信异常或后续校验通信异常时清理该组本地 Token，后续请求重新授权；通信异常的当前请求返回 503；
 7. 无 Token 或刷新失败时生成 state，并 302 到 authorize；
 8. SSO 不可用时返回 503，受控页面不得放行。
 
@@ -176,7 +178,7 @@ localSessionId + state -> pageCode, targetPath, expiresAt
 
 ### 4.5 固定回调
 
-对应 `DemoController.callback()` 和 `PageAccessService.completeCallback()`。
+对应 `AuthController.callback()` 和 `PageAccessService.completeCallback()`。
 
 固定回调只做后端工作：
 
@@ -186,11 +188,12 @@ localSessionId + state -> pageCode, targetPath, expiresAt
 4. 核对响应 client_id、openid 和 page_code；
 5. 立即调用 checkAccessToken；
 6. 获取用户白名单信息；
-7. 更换本地 Session ID；
-8. Token 保存到服务端；
-9. 303 到服务端白名单目标页面。
+7. 若 B 当前会话已是另一个用户，先清除 B 本地保存的全部页面 Token；
+8. 更换本地 Session ID；
+9. Token 保存到服务端；
+10. 303 到服务端白名单目标页面。
 
-回调地址不会显示业务内容，也不需要每个页面复制一套 Controller。
+第 7 步只清理 B 的本地授权缓存，不调用 Portal 全局退出，也不改变 Portal SID 的生命周期。回调地址不会显示业务内容，也不需要每个页面复制一套 Controller。
 
 ### 4.6 Token 仓库
 
@@ -226,6 +229,8 @@ RefreshToken 轮换必须对同一键加锁。不能让两个并发请求同时�
 
 仅在前端路由守卫里隐藏菜单不够，因为用户仍可输入 URL。推荐两种方式：
 
+以下是实际 SPA 可选的改造方式，相关 `/sso-entry` 和 `/api/page-access` 路由不是本示例现有接口。完整可复制的 API 例子见[新增页面与 API 教程](tutorials/add-page-and-api.md)。
+
 1. Vue 菜单先顶层导航到后端页面入口，例如 `window.location.assign('/sso-entry/B_PAGE_01')`，回调完成后再进入 Vue 路由；
 2. Vue 路由加载前调用 B 后端 `/api/page-access/B_PAGE_01`，后端返回需要导航的 authorize URL；前端只执行页面导航，不接触 Token。
 
@@ -251,7 +256,7 @@ Portal/JeecgBoot 菜单中登记外部系统页面 URL 时，URL 应指向外部
 
 ### 7.1 退出一个页面授权
 
-B 后端调用 SSO `/logout` 撤销该 AccessToken 对应的 Token family，然后删除本地页面 Token。
+B 后端先删除本地页面 Token，再调用 SSO `/logout` 撤销其 Token family。远端未确认时返回提示，本地授权已经清理；SSO_ONLY 清理的是所有页面共用的系统 Token。
 
 ### 7.2 退出 B 系统
 

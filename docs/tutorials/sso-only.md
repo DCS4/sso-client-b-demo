@@ -1,0 +1,54 @@
+# 教程一：普通单点登录 SSO_ONLY
+
+目标：用户通过统一身份登录 B，三个本地页面复用一组系统级 Token。先按[新手操作手册](../getting-started.md)准备工具和 SSO 环境。
+
+## 1. 登记与配置
+
+请管理员把客户端模式设为 `SSO_ONLY`，确认 client_id、client_secret 和固定回调。在 `.env` 填写对应凭据，并设置：
+
+```properties
+SSO_AUTH_MODE=SSO_ONLY
+B_CALLBACK_URL=http://localhost:18085/api/auth/callback
+```
+
+这里使用单 JAR 示例地址。双进程开发时按[配置说明](../configuration.md#3-四个地址如何对应)统一改为浏览器入口 5173。此模式不需要为了三个演示页面登记 SSO 页面权限。
+
+重启 B，使用新的浏览器会话打开首页。保持前后端使用同一个 Host，不要在回调地址之间混用 IP 和 localhost。
+
+## 2. 观察首次进入订单页
+
+点击“订单查询”。浏览器顶层导航到 `/pages/orders`；B 创建 state 后返回 SSO 授权地址。可以在 Network 检查 authorize 请求：有 `response_type`、`client_id`、`redirect_uri`、`state`，**没有 page_code**。
+
+登录后，浏览器访问固定回调。code 兑换、Token 校验和用户信息请求由 B 后端执行；浏览器不会直接请求 SSO 的 token 接口。
+
+最终订单页显示普通 SSO 模式。该页面的放行仍来自 B 后端的实时检查，不只是判断本地是否有用户名。
+
+## 3. 观察第二个页面
+
+返回首页，正常情况下本地 Token 数为 1。再点击“经营报表”：
+
+- B 使用同一组系统级 Token。
+- B 后端再次调用 SSO `checkAccessToken`，请求中没有 pageCode。
+- 如果 Token 仍有效，不需要为报表页单独授权；本地 Token 数仍为 1。
+
+刷新任意页面时仍会执行校验。若 Token 无效，公共流程可能尝试刷新或重新开始授权。
+
+## 4. 理解本地页面编码
+
+`PageCatalog` 仍列出 B_PAGE_01、B_PAGE_02、B_PAGE_03，前端也显示它们。这些编码用于本地目录和回跳目标；`SsoConfig.tokenKey()` 会把它们统一映射到 `__SSO_ONLY__`，HTTP 协议层不会把它们传给 SSO。
+
+## 5. 退出并再次访问
+
+点击“退出 B 系统”后，B 会销毁本地会话。再次进入业务页时，Portal 如果仍有登录会话，就可能静默授权，这不表示 B 的退出接口失败。
+
+后端还提供单页退出接口，但 SSO_ONLY 只有一组共享 Token，因此“退出一个页面授权”会清理共享授权。首页没有单页退出按钮；接口调用方法见[前端说明](../../frontend/README.md)。
+
+## 6. 接入真实业务时改哪里
+
+先把当前 `PageAccessService.enter()` 放到自己的页面或 API 入口，再加入业务系统原有的角色、组织和数据权限判断。本示例只返回演示页面，没有实现这些业务规则。
+
+不要把 `/api/auth/me` 返回 200 当作业务权限判断；它读取的是本地用户摘要。新增页面和数据接口的完整例子见[教程三](add-page-and-api.md)。
+
+## 完成标准
+
+订单页和报表页都可进入；浏览器授权请求不含 page_code；每次访问仍有后端校验；正常会话只保存一组系统 Token；退出 B 后本地会话清空。

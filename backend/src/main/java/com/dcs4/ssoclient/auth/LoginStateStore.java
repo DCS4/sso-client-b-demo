@@ -1,4 +1,4 @@
-package com.dcs4.ssoclient;
+package com.dcs4.ssoclient.auth;
 
 import java.io.Serializable;
 import java.security.SecureRandom;
@@ -10,13 +10,8 @@ import javax.servlet.http.HttpSession;
 import org.springframework.stereotype.Component;
 
 /**
- * 把一次性 state 与服务端登记的页面目标绑定。
- *
- * <p>使用 Map 而不是单一 session 属性，使同一浏览器的多个页签可以同时发起授权；
- * 每个 state 只能消费一次，且不会把任意 target URL 放进浏览器可修改的数据中。</p>
- *
- * <p>【接入必要项 4/5：登录事务仓库】真实厂商可以使用其已有会话/Redis 保存同一映射；
- * 必须保持不可预测、限时、回调先消费再兑 code、目标由服务端登记，不要改为前端传目标 URL。</p>
+ * 保存一次性 state 及其目标页面。同一会话用 Map 保存多个登录事务，支持多个页签。
+ * 每个事务都有过期时间，回调时先删除再使用。
  */
 @Component
 public class LoginStateStore {
@@ -28,20 +23,21 @@ public class LoginStateStore {
   /** 进入未授权页面时创建 state，绑定当前服务端已登记的目标页；多个标签页可以并发授权。 */
   public String begin(HttpSession session, String pageCode, String targetPath) {
     synchronized (session) {
-      Map<String, LoginTransaction> values = values(session, true);
-      clean(values);
+      // 1. 取出事务表并清理过期记录。
+      Map<String, LoginTransaction> values = getOrCreateTransactions(session);
+      removeExpired(values);
+      // 2. 超过上限时移除最早的记录，为新事务留出位置。
       while (values.size() >= MAX_PENDING) {
         Iterator<String> iterator = values.keySet().iterator();
-        if (!iterator.hasNext()) {
-          break;
-        }
         iterator.next();
         iterator.remove();
       }
+      // 3. 生成随机 state，保存目标页面、开始时间和过期时间。
       String state = randomState();
       long startedAtMillis = System.currentTimeMillis();
-      values.put(state, new LoginTransaction(
-          pageCode, targetPath, startedAtMillis, startedAtMillis + TTL_MILLIS));
+      long expiresAt = startedAtMillis + TTL_MILLIS;
+      LoginTransaction transaction = new LoginTransaction(pageCode, targetPath, startedAtMillis, expiresAt);
+      values.put(state, transaction);
       return state;
     }
   }
@@ -52,11 +48,13 @@ public class LoginStateStore {
       return null;
     }
     synchronized (session) {
-      Map<String, LoginTransaction> values = values(session, false);
+      // 1. 只读取已有事务，不为无效回调新建事务表。
+      Map<String, LoginTransaction> values = findTransactions(session);
       if (values == null) {
         return null;
       }
-      clean(values);
+      // 2. 清理过期记录，再移除本次 state，保证只能消费一次。
+      removeExpired(values);
       LoginTransaction value = values.remove(state);
       if (values.isEmpty()) {
         session.removeAttribute(ATTRIBUTE);
@@ -66,24 +64,29 @@ public class LoginStateStore {
   }
 
   @SuppressWarnings("unchecked")
-  private Map<String, LoginTransaction> values(HttpSession session, boolean create) {
+  private Map<String, LoginTransaction> findTransactions(HttpSession session) {
     Object raw = session.getAttribute(ATTRIBUTE);
     if (raw instanceof Map) {
       return (Map<String, LoginTransaction>) raw;
     }
-    if (!create) {
-      return null;
+    return null;
+  }
+
+  private Map<String, LoginTransaction> getOrCreateTransactions(HttpSession session) {
+    Map<String, LoginTransaction> values = findTransactions(session);
+    if (values == null) {
+      values = new LinkedHashMap<String, LoginTransaction>();
+      session.setAttribute(ATTRIBUTE, values);
     }
-    Map<String, LoginTransaction> values = new LinkedHashMap<String, LoginTransaction>();
-    session.setAttribute(ATTRIBUTE, values);
     return values;
   }
 
-  private void clean(Map<String, LoginTransaction> values) {
+  private void removeExpired(Map<String, LoginTransaction> values) {
     long now = System.currentTimeMillis();
     Iterator<Map.Entry<String, LoginTransaction>> iterator = values.entrySet().iterator();
     while (iterator.hasNext()) {
-      if (iterator.next().getValue().getExpiresAt() <= now) {
+      LoginTransaction transaction = iterator.next().getValue();
+      if (transaction.getExpiresAt() <= now) {
         iterator.remove();
       }
     }

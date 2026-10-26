@@ -1,4 +1,4 @@
-package com.dcs4.ssoclient;
+package com.dcs4.ssoclient.auth;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -7,15 +7,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
-/**
- * 业务页面路径与 SSO page_code 的服务端白名单。
- *
- * <p>真实项目可以改为数据库或配置中心，但浏览器不能自行提交任意 page_code/target。
- * 同一份映射还用于固定回调后的安全回跳，避免开放重定向。</p>
- *
- * <p>【接入必要项 3/5：页面映射】真实业务系统仅替换页面来源（路由/数据库/配置中心），
- * 保留 path 与 page_code 一一对应以及回调目标白名单。此类的三个页面只是演示数据。</p>
- */
+/** 后端登记的页面目录：路径用于定位页面，编码用于 SSO 授权，回跳目标也来自此处。 */
 @Component
 public class PageCatalog {
   private final Map<String, Page> byPath = new LinkedHashMap<String, Page>();
@@ -46,11 +38,20 @@ public class PageCatalog {
   }
 
   public List<Page> all() {
-    return Collections.unmodifiableList(new ArrayList<Page>(byCode.values()));
+    List<Page> pages = new ArrayList<Page>(byCode.values());
+    return Collections.unmodifiableList(pages);
   }
 
   private void register(Page page) {
-    if (byPath.put(page.getPath(), page) != null || byCode.put(page.getCode(), page) != null) {
+    // 1. 按路径登记页面，同时检查是否重复。
+    Page previousPath = byPath.put(page.getPath(), page);
+    if (previousPath != null) {
+      throw new IllegalStateException("页面路径和 page_code 不能重复");
+    }
+
+    // 2. 按编码建立另一份索引，供单页退出等操作查找。
+    Page previousCode = byCode.put(page.getCode(), page);
+    if (previousCode != null) {
       throw new IllegalStateException("页面路径和 page_code 不能重复");
     }
   }

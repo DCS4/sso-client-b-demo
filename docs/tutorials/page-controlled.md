@@ -1,0 +1,68 @@
+# 教程二：页面受控 PAGE_CONTROLLED
+
+目标：由 SSO 平台统一决定用户能进入哪些 B 系统页面，直接输入页面 URL 也执行相同校验。先完成[新手操作手册](../getting-started.md)的环境准备。
+
+## 1. 登记客户端和页面
+
+客户端模式设为 `PAGE_CONTROLLED`，本地 `.env` 使用相同值：
+
+```properties
+SSO_AUTH_MODE=PAGE_CONTROLLED
+B_CALLBACK_URL=http://localhost:18085/api/auth/callback
+```
+
+其余凭据按[配置说明](../configuration.md)填写。此处使用单 JAR 地址；双进程开发需要同步修改系统登记和回调为 5173。
+
+在 SSO 登记以下映射，与 `auth/PageCatalog.java` 完全一致：
+
+| page_code | page_path | 示例 permission_code |
+| --- | --- | --- |
+| B_PAGE_01 | /pages/orders | b:orders:view |
+| B_PAGE_02 | /pages/reports | b:reports:view |
+| B_PAGE_03 | /pages/operations | b:operations:view |
+
+准备一个测试账号，先只分配订单页权限，不分配报表页权限。具体的客户端和页面登记字段见[接入指南](../integration-guide.md#3-管理端准备)。
+
+## 2. 进入有权限的订单页
+
+重启 B，打开新的浏览器会话，点击“订单查询”。首次 authorize 请求包含 `page_code=B_PAGE_01`。
+
+统一登录后仍只回调 `/api/auth/callback`。B 根据服务端保存的 state 找回原始目标，兑换 Token，并核对 client_id、用户和 page_code。成功后跳回 `/pages/orders`，该页再次通过后端守卫执行校验。
+
+返回首页，通常显示本地 Token 数为 1。刷新订单页，正常情况下复用已有页面 Token，并继续实时调用 checkAccessToken。
+
+## 3. 进入没有权限的报表页
+
+点击“经营报表”。SSO 应拒绝本次页面授权，可能通过固定回调返回 `error=access_denied` 和 state。B 显示 403 错误，不自动循环跳转授权。
+
+前端首页仍会列出报表链接，因为 `/api/pages` 返回的是演示目录，不是当前用户的权限菜单。链接可见与是否允许进入是两件不同的事。
+
+直接在地址栏输入 `/pages/reports` 应得到同样的授权检查；隐藏菜单不能替代后端守卫。
+
+## 4. 分配第二个页面权限
+
+让管理员给测试账号分配报表权限，再从 `/pages/reports` 重新开始授权，不要重复使用旧回调 URL。
+
+授权成功后，订单页和报表页分别保存自己的 Token；正常情况下首页 Token 数为 2。之后在两个页面间切换，会校验各自的 Token，不需要每次都重新签发。
+
+## 5. 观察权限取消
+
+让管理员取消订单页权限，再刷新订单页。B 会向 SSO 校验，并按现有公共流程处理无效结果；最终应拒绝该页面访问。该示例通过下一次请求发现权限变化，不会主动关闭已经显示在浏览器里的页面。
+
+SSO 无法连接时应出现错误响应；页面不会因为本地曾保存过 Token 就继续放行。
+
+## 6. 观察退出范围
+
+单页退出只清理对应页面的本地 Token 并尝试撤销其 Token family；其他页面授权仍独立保存。退出 B 系统会处理 B 保存的全部页面 Token 并销毁本地会话。两者都不等于 Portal 全局退出。
+
+本地接口和 CSRF 调用方式见[前端说明](../../frontend/README.md)。
+
+## 7. 接入真实页面
+
+用接入方的真实路径、页面编码和权限替换演示目录，保留页面进入时的后端校验。页面中的订单查询、导出、编辑等 API 也需要后端保护；页面本身受控不代表所有数据接口自动受控。
+
+下一步按[新增页面与 API 教程](add-page-and-api.md)添加库存页。
+
+## 完成标准
+
+有权限的页面可访问，无权限的页面被拒绝；不同页面分别授权；直接输入 URL 无法绕过校验；刷新页面能观察到后端实时校验。

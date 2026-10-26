@@ -1,4 +1,4 @@
-package com.dcs4.ssoclient;
+package com.dcs4.ssoclient.auth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;

@@ -1,19 +1,11 @@
-package com.dcs4.ssoclient;
+package com.dcs4.ssoclient.config;
 
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-/**
- * 外部系统持有的 SSO V2 配置。
- *
- * <p>client_secret 只能通过后端环境变量或密钥管理系统注入，不能打包进 Vue、
- * application.properties 的真实值或任何浏览器响应。</p>
- *
- * <p>【接入必要项：配置】接入厂商只需把 SSO 基础 URL、client_id、一次性交付的
- * client_secret、唯一回调地址、认证模式映射到自己的配置系统；不能从浏览器请求读取这些值。</p>
- */
+/** 从 application.yml 和后端环境配置读取 SSO 参数；client_secret 不交给前端。 */
 @Component
 public class SsoConfig {
   public static final String PAGE_CONTROLLED = "PAGE_CONTROLLED";
@@ -43,7 +35,10 @@ public class SsoConfig {
   /** SSO V2 公共协议前缀；不是内部 /internal/sso 地址，也不是 Portal 前端地址。 */
   public String endpoint(String path) {
     String value = require(baseUrl, "SSO_BASE_URL");
-    return (value.endsWith("/") ? value.substring(0, value.length() - 1) : value) + path;
+    if (value.endsWith("/")) {
+      value = value.substring(0, value.length() - 1);
+    }
+    return value + path;
   }
 
   public void requireBackendCredentials() {
@@ -61,7 +56,10 @@ public class SsoConfig {
 
   /** 【模式差异】PAGE_CONTROLLED 按 pageCode 隔离 Token；SSO_ONLY 按系统共用一组。 */
   public String tokenKey(String pageCode) {
-    return isPageControlled() ? pageCode : "__SSO_ONLY__";
+    if (isPageControlled()) {
+      return pageCode;
+    }
+    return "__SSO_ONLY__";
   }
 
   public String getClientId() {

@@ -1,7 +1,8 @@
-package com.dcs4.ssoclient;
+package com.dcs4.ssoclient.sso;
 
-import com.dcs4.ssoclient.SsoModels.ActiveTokenData;
-import com.dcs4.ssoclient.SsoModels.TokenData;
+import com.dcs4.ssoclient.config.SsoConfig;
+import com.dcs4.ssoclient.sso.SsoModels.ActiveTokenData;
+import com.dcs4.ssoclient.sso.SsoModels.TokenData;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,7 +31,7 @@ class SsoClientResultTest {
     when(config.getReadTimeout()).thenReturn(Duration.ofSeconds(2));
     when(config.getClientId()).thenReturn("client-b");
     when(config.getClientSecret()).thenReturn("secret");
-    when(config.getCallbackUrl()).thenReturn("http://127.0.0.1:18080/api/auth/callback");
+    when(config.getCallbackUrl()).thenReturn("http://127.0.0.1:18085/api/auth/callback");
     when(config.endpoint("/token")).thenReturn("http://127.0.0.1:19089/oauth2Server/oauth2/token");
     when(config.endpoint("/checkAccessToken")).thenReturn("http://127.0.0.1:19089/oauth2Server/oauth2/checkAccessToken");
     sso = new SsoClient(config, new ObjectMapper(), new RestTemplateBuilder());

@@ -4,13 +4,16 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
-// https://vite.dev/config/
+// 与后端默认端口一致；更改后端端口时同步修改这里。
+const backendUrl = 'http://localhost:18085'
 export default defineConfig({
   server: {
+    port: 5173,
+    strictPort: true,
     proxy: {
-      '/api': 'http://localhost:18085',
+      '/api': backendUrl,
       // 真实页面 URL 必须到达 B 后端守卫，不能由 Vite 静态回退绕过。
-      '/pages': 'http://localhost:18085',
+      '/pages': backendUrl,
     },
   },
   plugins: [

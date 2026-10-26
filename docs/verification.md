@@ -1,6 +1,6 @@
 # V2 验证说明
 
-本分支将已合并的 V1 Demo 整体替换为 SSO V2 固定回调和页面级 Token 方案，不承诺旧协议兼容。
+本文用于核对客户端示例的本地行为和真实环境联调。两种模式分别按 [SSO_ONLY 教程](tutorials/sso-only.md)和 [PAGE_CONTROLLED 教程](tutorials/page-controlled.md)验证。
 
 ## 代码检查范围
 
@@ -8,6 +8,7 @@
 - 浏览器响应和 Vue 代码中不包含 client_secret、AccessToken、RefreshToken；
 - 三个页面路径都从后端 `PageCatalog` 映射到 page_code；
 - 固定回调会消费 state、核对 Token 绑定、更新 Session ID，并 303 到白名单目标；
+- 固定回调确认 B 会话已切换用户时，只清除 B 本地页面 Token，不替代 Portal 全局退出；
 - 每次页面请求调用 checkAccessToken；
 - RefreshToken 在同一 Session 锁内轮换并整体替换；
 - SSO/权限链路异常时不放行页面；
@@ -15,7 +16,7 @@
 
 ## 部署环境验收
 
-本仓库构建成功不等于真实链路已经联调。环境具备后必须验证：
+本仓库构建成功不等于真实链路已经联调。下面第 3、4 项针对 PAGE_CONTROLLED；SSO_ONLY 应验证跨页面复用系统 Token，且仍执行远端身份校验。环境具备后按模式验证：
 
 1. Portal 登录与 pending 恢复；
 2. callback、client_id、client_secret 和 auth_mode 配置一致；
@@ -24,15 +25,16 @@
 5. RefreshToken 正常轮换和旧值重放拒绝；
 6. 页面、客户端、用户停用；
 7. Portal 全局退出后旧页面 Token 失效；
-8. 多实例 Session/Token 共享和并发刷新；
-9. Nginx 不公开 `/internal/**`；
-10. 日志、浏览器和前端构建产物中不存在 Secret/Token。
+8. 同一浏览器在 B 中切换为另一用户并完成新页面授权后，旧用户的 B 本地页面 Token 已清除；
+9. 多实例 Session/Token 共享和并发刷新；
+10. 业务页面和业务 API 都经过 B 后端校验；
+11. 日志、浏览器和前端构建产物中不存在 Secret/Token。
 
-本次按项目约定只提交代码与文档，未把无法连接真实 Portal/SSO 的本地运行结果当作端到端验收。
+本地验证可运行 `mvn -f backend/pom.xml clean test` 和 `npm --prefix frontend run build`。本地测试和构建不能替代真实 Portal/SSO 联调；多实例能力需要在接入方适配后验证。
 
 ## 分阶段耗时日志（SSO-Timing）
 
-这次只加观测点，没有调整 code/state 的一次性语义、回调位置或 Token 校验/刷新逻辑。B 后端 INFO 日志中搜索 `[SSO-Timing]`：
+B 后端 INFO 日志中搜索 `[SSO-Timing]`：
 
 | 日志字段 | 从哪里到哪里 | 是否包含用户输入密码/浏览器耗时 |
 | --- | --- | --- |
@@ -42,7 +44,7 @@
 | `endpoint=..., elapsedMs` | B 向 SSO 发送一次 HTTP 请求 → 收到该请求的响应（或请求出错） | 否；分别对应 `/token`、`/checkAccessToken`、`/getUserInfoByOauth2` 等 |
 | `backendPageMs` | B 再次收到真实业务页面请求 → 完成服务端校验、准备返回 HTML | 否；不包含浏览器下载和渲染 |
 
-**推荐复测步骤**：重新启动 B，打开新的隐身窗口，从 `/pages/orders` 开始一次新授权；记录本次 `browserRoundTripMs` 和三条核心 HTTP 耗时。进入页面后再刷新一次，对比 `backendPageMs` 与 `/checkAccessToken` 往返耗时。随后访问已有授权的 PAGE_02 和无权限的 PAGE_03，检查其最终结果没有变化。
+**推荐复测步骤**：重新启动 B，打开新的隐身窗口，从 `/pages/orders` 开始一次新授权；记录本次 `browserRoundTripMs` 和三条核心 HTTP 耗时。进入页面后再刷新一次，对比 `backendPageMs` 与 `/checkAccessToken` 往返耗时。随后按测试账号实际分配的权限，分别访问另一个已授权页面和未授权页面，核对最终结果。
 
 **解释结果时不要混算**：`browserRoundTripMs` 已经包含回调阶段的 `callbackProcessingMs`；后者又包含 `/token`、`/checkAccessToken` 和 `/getUserInfoByOauth2` 各次 HTTP 往返。首次页面的 `backendGuardMs`、授权往返和最终页面的 `backendPageMs` 可用于分析阶段，但仍不等于浏览器端从点击到完成渲染的精确耗时。要取得完整用户感知耗时，需另用浏览器 Network/Performance 记录。
 
