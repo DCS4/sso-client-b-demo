@@ -4,10 +4,11 @@
 --   1) 权限项  2) 授权给 admin 角色  3) 登记客户端  4) 登记受控页面
 -- 测试时登录账号必须拥有 admin 角色，否则页面会被拒绝。
 --
--- client_secret_hash 是明文密钥的 SHA-256 密文；
--- 明文就是接入方 .env 中的 SSO_CLIENT_SECRET，数据库里不保存明文。
--- 若 sso_demo_001 已存在（例如先执行过普通单点登录脚本），请先：
---   DELETE FROM sys_sso WHERE id = 'sso_demo_001';
+-- 1. auth_mode 存储为数值 0（对应字典 sso_auth_mode 中的“页面受控”）；
+-- 2. client_secret_hash 是明文密钥的 SHA-256 密文；
+--    明文就是接入方 .env 中的 SSO_CLIENT_SECRET，数据库里不保存明文。
+-- 3. 若 sso_demo_001 已存在（例如先执行过普通单点登录脚本），请先：
+--    DELETE FROM sys_sso WHERE id = 'sso_demo_001';
 -- ====================================================================
 
 -- 1. 权限项 (sys_permission)
@@ -52,7 +53,7 @@ INSERT INTO sys_sso
 VALUES
     ('sso_demo_001', 'SSO客户端B系统Demo', '/api/auth/callback', 'demo_client_b',
      'afc6bfb26a94fd3a7780bbca05fc5aea15906c53563336133d2546c3b243e826', 1,
-     'http://localhost:18085', '用于 sso-client-demo 本地联调测试', 'PAGE_CONTROLLED', 1,
+     'http://localhost:18085', '用于 sso-client-demo 本地联调测试', 0, 1,
      '2026-09-20 20:26:34', '2026-09-23 09:55:41');
 
 -- 4. 登记受控页面 (sys_sso_page_resource)
