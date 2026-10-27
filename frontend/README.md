@@ -143,13 +143,13 @@ PAGE_CONTROLLED 清理指定页面；SSO_ONLY 清理共享系统 Token，影响�
 
 登录、链接、CSRF 和退出调用方式相同。Vue 通过 `/me` 的 authMode 解释当前行为，不向后端传入认证模式，也没有运行时切换开关。未登录时首页使用中性说明，不根据缺少用户信息猜测模式。
 
-SSO_ONLY 共用系统 Token，身份通过后由业务系统实施自己的权限；PAGE_CONTROLLED 使用页面 Token。完整差异见[模式详解](../docs/auth-modes.md)。
+SSO_ONLY 共用系统 Token，身份通过后由业务系统实施自己的权限；PAGE_CONTROLLED 使用页面 Token。完整差异见[认证模式详解](../docs/认证模式详解.md)。
 
 ## 8. 换成实际 Vue / React 路由
 
 可以保留顶层导航到后端受保护入口的方式。对于需要先获取数据的 SPA，后端 API 应返回可供前端识别的未授权状态，再由前端发起顶层导航；不能只隐藏菜单或保护路由组件。
 
-本项目没有默认提供 `/api/page-access` 接口。可复制的业务 API 示例及 401 + loginUrl 处理见[新增页面与 API 教程](../docs/tutorials/add-page-and-api.md)。
+本项目没有默认提供 `/api/page-access` 接口。可复制的业务 API 示例及 401 + loginUrl 处理见[新增页面与 API 教程](../docs/tutorials/新增页面与API教程.md)。
 
 ## 9. 开发和构建
 
@@ -158,6 +158,6 @@ npm ci
 npm run dev
 ```
 
-开发入口固定为 `http://localhost:5173`；`/api` 和 `/pages` 代理到 `http://localhost:18085`。这些地址按本机浏览器演示。若从其他机器访问 Vite，启动时增加 `--host 0.0.0.0`，并将系统登记和回调统一改为浏览器实际访问的 IP 或域名。需要先启动后端，并按[新手手册的双进程步骤](../docs/getting-started.md#8-修改前端时双进程开发)同步登记回调。
+开发入口固定为 `http://localhost:5173`；`/api` 和 `/pages` 代理到 `http://localhost:18085`。这些地址按本机浏览器演示。若从其他机器访问 Vite，启动时增加 `--host 0.0.0.0`，并将系统登记和回调统一改为浏览器实际访问的 IP 或域名。需要先启动后端，并按[新手操作手册的双进程步骤](../docs/新手操作手册.md#8-修改前端时双进程开发)同步登记回调。
 
 `npm run build` 执行类型检查和构建。根目录 `scripts/package.*` 会把 dist 复制到后端静态目录再打包 JAR；仅前端 build 不会自动更新后端静态文件。`npm run preview` 不包含开发代理，仅用于查看前端产物。

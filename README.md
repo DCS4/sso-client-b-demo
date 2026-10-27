@@ -8,15 +8,15 @@
 
 | 你想做什么 | 阅读入口 |
 | --- | --- |
-| 第一次运行、配置地址、排查启动问题 | [新手操作手册](docs/getting-started.md) |
-| 了解所有配置项和地址的对应关系 | [配置说明](docs/configuration.md) |
-| 分清普通单点登录和页面受控 | [两种模式详解](docs/auth-modes.md) |
-| 先接入普通单点登录 | [SSO_ONLY 教程](docs/tutorials/sso-only.md) |
-| 由 SSO 决定每个页面的访问权限 | [PAGE_CONTROLLED 教程](docs/tutorials/page-controlled.md) |
-| 新增业务页面并保护其数据接口 | [新增页面与 API 教程](docs/tutorials/add-page-and-api.md) |
+| 第一次运行、配置地址、排查启动问题 | [新手操作手册](docs/新手操作手册.md) |
+| 了解所有配置项和地址的对应关系、密钥全生命周期 | [配置说明](docs/配置说明.md) |
+| 分清普通单点登录和页面受控 | [认证模式详解](docs/认证模式详解.md) |
+| 先接入普通单点登录 | [普通单点登录教程](docs/tutorials/普通单点登录教程.md) |
+| 由 SSO 决定每个页面的访问权限 | [页面受控教程](docs/tutorials/页面受控教程.md) |
+| 新增业务页面并保护其数据接口 | [新增页面与 API 教程](docs/tutorials/新增页面与API教程.md) |
 | 前端需要哪些接口、怎样发起登录和退出 | [前端接入说明](frontend/README.md) |
-| 将示例迁入已有业务系统 | [外部系统接入指南](docs/integration-guide.md) |
-| 查协议字段、验收步骤和耗时日志 | [协议摘要](docs/protocol.md)、[验证说明](docs/verification.md) |
+| 将示例迁入已有业务系统 | [外部系统接入指南](docs/外部系统接入指南.md) |
+| 查协议字段、验收步骤和耗时日志 | [SSO协议摘要](docs/SSO协议摘要.md)、[验证与验收说明](docs/验证与验收说明.md) |
 
 ## 工程目录
 
@@ -45,16 +45,19 @@ sso-client-demo/
 │   │   └── api.ts                       # 调用 B 接口及添加 CSRF 请求头
 │   └── vite.config.ts                   # 开发时代理 /api 和 /pages
 ├── docs/
-│   ├── getting-started.md
-│   ├── configuration.md
-│   ├── auth-modes.md
-│   ├── integration-guide.md
-│   ├── protocol.md
-│   ├── verification.md
+│   ├── 新手操作手册.md
+│   ├── 配置说明.md
+│   ├── 认证模式详解.md
+│   ├── 外部系统接入指南.md
+│   ├── SSO协议摘要.md
+│   ├── 验证与验收说明.md
 │   ├── tutorials/                       # 两种模式及扩展示例的操作步骤
+│   │   ├── 普通单点登录教程.md
+│   │   ├── 页面受控教程.md
+│   │   └── 新增页面与API教程.md
 │   └── examples/                        # 可复制的教程代码，默认不参与应用构建
 ├── scripts/                             # 构建前端、拷贝静态文件、打包后端
-└── sql/README.md                         # 为什么客户端不需要初始化数据库
+└── sql/README.md                         # 数据库初始化说明与最新表结构 SQL 模板
 ```
 
 阅读代码时，先从 `demo/PageController.page()` 看到 `auth/PageAccessService.enter()`，再看 `auth/AuthController.callback()` 和 `completeCallback()`，最后看 `sso/SsoClient` 如何发送 HTTP 请求。`PageCatalog` 位于 `auth/`，负责页面映射；其中的三条记录是演示数据。
@@ -75,7 +78,7 @@ java -jar backend/target/sso-client-b-demo-0.1.0-SNAPSHOT.jar
 
 Linux/macOS 使用 `cp .env.example .env`、`bash scripts/package.sh`，随后执行同一个 `java -jar` 命令。默认打开 [B 系统首页](http://localhost:18085)，点击“订单查询”开始授权。SSO 管理端的系统地址登记为 `http://localhost:18085`，回调路径为 `/api/auth/callback`。
 
-首次配置、非本机访问以及前后端双进程开发的完整步骤见[新手操作手册](docs/getting-started.md)。本地端口只是示例，SSO 地址和回调必须使用当前环境实际可访问的地址。
+首次配置、非本机访问以及前后端双进程开发的完整步骤见[新手操作手册](docs/新手操作手册.md)。本地端口只是示例，SSO 地址和回调必须使用当前环境实际可访问的地址。
 
 ## 两种模式共用一个工程
 
@@ -87,7 +90,7 @@ Linux/macOS 使用 `cp .env.example .env`、`bash scripts/package.sh`，随后�
 | 本示例每次访问页面 | 后端向 SSO 校验 | 后端向 SSO 校验 |
 | 业务数据、操作和租户权限 | 接入方自行实现 | 接入方按业务需要继续实现 |
 
-在 `.env` 中设置 `SSO_AUTH_MODE`，并让 SSO 管理端的客户端模式保持一致。共用登录、回调、刷新和退出流程；模式差异由配置判断及 Token 键映射处理，无需复制两套工程。切换步骤见[模式说明](docs/auth-modes.md)。
+在 `.env` 中设置 `SSO_AUTH_MODE`，并让 SSO 管理端的客户端模式保持一致。共用登录、回调、刷新和退出流程；模式差异由配置判断及 Token 键映射处理，无需复制两套工程。切换步骤见[认证模式详解](docs/认证模式详解.md)。
 
 ## 示例范围
 

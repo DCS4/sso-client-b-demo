@@ -32,7 +32,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * B 后端访问远端 SSO 的 HTTP 实现。请求字段集中在这里，业务流程只依赖 SsoGateway。
- * 接口地址、表单和 JSON 字段均对应 docs/protocol.md。
+ * 接口地址、表单和 JSON 字段均对应 docs/SSO协议摘要.md。
  */
 @Service
 public class SsoClient implements SsoGateway {
