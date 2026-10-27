@@ -10,10 +10,10 @@
 
 | 模式 | 脚本 | 内容 | 数据库 auth_mode 存储值 |
 | --- | --- | --- | --- |
-| 普通单点登录 `SSO_ONLY` | [普通单点登录_SSO_ONLY.sql](普通单点登录_SSO_ONLY.sql) | 只登记客户端（`sys_sso`） | `1`（对应字典 `sso_auth_mode`：普通单点登录） |
-| 页面受控 `PAGE_CONTROLLED` | [页面受控_PAGE_CONTROLLED.sql](页面受控_PAGE_CONTROLLED.sql) | 权限项、授权给 admin、登记客户端、登记三个页面 | `0`（对应字典 `sso_auth_mode`：页面受控） |
+| 普通单点登录 `SSO_ONLY` | [普通单点登录_SSO_ONLY.sql](普通单点登录_SSO_ONLY.sql) | 只登记客户端（`sys_sso`） | `1`（对应字典 `sso`：普通单点登录） |
+| 页面受控 `PAGE_CONTROLLED` | [页面受控_PAGE_CONTROLLED.sql](页面受控_PAGE_CONTROLLED.sql) | 权限项、授权给 admin、登记客户端、登记三个页面 | `0`（对应字典 `sso`：页面受控） |
 
-- **模式存储与映射**：SSO 服务端数据库 `sys_sso.auth_mode` 使用数值存储（`0` 受控，`1` 单点），并在管理端通过数据字典 `sso_auth_mode` 翻译为中文；接入方（B 系统）配置 `.env` 保持可读的枚举名（`PAGE_CONTROLLED` 或 `SSO_ONLY`），客户端代码与外部配置无需任何变动。
+- **模式存储与映射**：SSO 服务端数据库 `sys_sso.auth_mode` 使用数值存储（`0` 受控，`1` 单点），并在管理端通过数据字典 `sso` 翻译为中文；接入方（B 系统）配置 `.env` 保持可读的枚举名（`PAGE_CONTROLLED` 或 `SSO_ONLY`），客户端代码与外部配置无需任何变动。
 - **切换模式**：两个脚本登记的是同一个客户端 `sso_demo_001`，切换模式前先 `DELETE FROM sys_sso WHERE id = 'sso_demo_001';`，并同步修改 `.env` 的 `SSO_AUTH_MODE`。
 - **角色权限**：页面受控脚本把权限授予 `admin` 角色，测试时**登录账号必须拥有 admin 角色**，否则页面会被拒绝。
 

@@ -2,7 +2,7 @@
 -- 普通单点登录模式 (SSO_ONLY) 本地联调脚本
 -- 在 SSO 管理方（yth / jeecg_boot 库）执行，只需登记客户端，无需页面与权限数据。
 --
--- 1. auth_mode 存储为数值 1（对应字典 sso_auth_mode 中的“普通单点登录”）；
+-- 1. auth_mode 存储为数值 1（对应字典 sso 中的“普通单点登录”）；
 -- 2. client_secret_hash 是明文密钥的 SHA-256 密文；
 --    明文就是接入方 .env 中的 SSO_CLIENT_SECRET，数据库里不保存明文。
 -- 3. 若 sso_demo_001 已存在（例如先执行过页面受控脚本），请先：
