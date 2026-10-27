@@ -23,6 +23,6 @@ sso:
   # 单 JAR 示例用 18085；Vite 双进程开发时改为 5173，并同步 SSO 登记。
   callback-url: ${B_CALLBACK_URL:http://localhost:18085/api/auth/callback}
   # 与 SSO 管理端保持一致：PAGE_CONTROLLED 或 SSO_ONLY。
-  auth-mode: ${SSO_AUTH_MODE:PAGE_CONTROLLED}
+  auth-mode: ${SSO_AUTH_MODE:SSO_ONLY}
   connect-timeout: ${SSO_CONNECT_TIMEOUT:2s}
   read-timeout: ${SSO_READ_TIMEOUT:3s}
