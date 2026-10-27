@@ -57,7 +57,7 @@ sso-client-demo/
 │   │   └── 新增页面与API教程.md
 │   └── examples/                        # 可复制的教程代码，默认不参与应用构建
 ├── scripts/                             # 构建前端、拷贝静态文件、打包后端
-└── sql/README.md                         # 数据库初始化说明与最新表结构 SQL 模板
+└── sql/README.md                         # 数据库与客户端登记说明（接入方无须自建表）
 ```
 
 阅读代码时，先从 `demo/PageController.page()` 看到 `auth/PageAccessService.enter()`，再看 `auth/AuthController.callback()` 和 `completeCallback()`，最后看 `sso/SsoClient` 如何发送 HTTP 请求。`PageCatalog` 位于 `auth/`，负责页面映射；其中的三条记录是演示数据。
