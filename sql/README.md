@@ -23,8 +23,15 @@
 
 ---
 
-## 3. 页面权限编码（仅页面受控模式）
+## 3. 联调 SQL 脚本使用说明（[syspermission.sql](syspermission.sql)）
 
-在“页面受控模式（`PAGE_CONTROLLED`）”下，测试用户需要在统一认证中心被赋予对应的页面权限编码（如 `b:orders:view`、`b:reports:view`、`b:operations:view`）：
-- 平台管理员可在 JeecgBoot 权限管理界面配置菜单/按钮权限，或参考同目录下的 [syspermission.sql](syspermission.sql) 脚本分配给测试角色；
-- 用户只有在拥有相应权限时，SSO 校验接口才会签发页面访问 Token。
+同目录下的 [syspermission.sql](syspermission.sql) 为本地联调提供了开箱即用的测试数据。按接入模式不同，执行范围区分如下：
+
+- **普通单点登录（`SSO_ONLY`）**：
+  **只需执行其中的 `sys_sso` 客户端登记语句**即可。普通单点登录仅校验用户登录态，不校验页面受控权限，不需要执行页面资源和权限授权 SQL。
+- **页面受控模式（`PAGE_CONTROLLED`）**：
+  **需要执行文件中的全部 SQL**（包含权限项 `sys_permission`、角色授权 `sys_role_permission`、客户端登记 `sys_sso` 以及受控页面资源 `sys_sso_page_resource`）。
+
+> ⚠️ **角色权限前提（关键）**：
+> `syspermission.sql` 脚本默认将受控页面权限赋予了 **`admin` 角色**。
+> 因此测试受控模式时，**登录的用户账号必须具备 `admin` 角色权限才能通过页面受控校验**；若使用未授权的普通账号登录，校验接口会拒绝访问（返回 403 页面受控拒绝）。
