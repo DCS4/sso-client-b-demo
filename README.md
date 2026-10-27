@@ -17,6 +17,7 @@
 | 前端需要哪些接口、怎样发起登录和退出 | [前端接入说明](frontend/README.md) |
 | 将示例迁入已有业务系统 | [外部系统接入指南](docs/外部系统接入指南.md) |
 | 查协议字段、验收步骤和耗时日志 | [SSO协议摘要](docs/SSO协议摘要.md)、[验证与验收说明](docs/验证与验收说明.md) |
+| SSO 管理方本地联调的初始化 SQL 和密钥说明 | [sql/README.md](sql/README.md) |
 
 ## 工程目录
 
@@ -57,7 +58,7 @@ sso-client-demo/
 │   │   └── 新增页面与API教程.md
 │   └── examples/                        # 可复制的教程代码，默认不参与应用构建
 ├── scripts/                             # 构建前端、拷贝静态文件、打包后端
-└── sql/README.md                         # 数据库与客户端登记说明（接入方无须自建表）
+└── sql/                                  # SSO 管理方联调脚本（SSO_ONLY / PAGE_CONTROLLED 各一份）与说明
 ```
 
 阅读代码时，先从 `demo/PageController.page()` 看到 `auth/PageAccessService.enter()`，再看 `auth/AuthController.callback()` 和 `completeCallback()`，最后看 `sso/SsoClient` 如何发送 HTTP 请求。`PageCatalog` 位于 `auth/`，负责页面映射；其中的三条记录是演示数据。
@@ -96,4 +97,4 @@ Linux/macOS 使用 `cp .env.example .env`、`bash scripts/package.sh`，随后�
 
 示例使用单实例 HttpSession，固定一个后端回调，三个演示页面共用公共守卫。SSO Token 和 client_secret 保存在后端；浏览器通过自动管理的本地会话 Cookie 关联后端状态，Vue 不保存 SSO Token。首页的用户信息是本地摘要，进入页面时仍会实时校验。
 
-它提供的是接入参考代码。多实例共享会话、业务用户映射和业务权限需适配接入方现有系统。Spring Boot 2.7.18 用于保留 JDK 8 兼容性。远端协议的权威契约由 SSO 服务端仓库 `DCS4/yth/docs/SSO-V2接口文档.md` 维护；本仓库提供客户端使用到的摘要。
+它提供的是接入参考代码。多实例共享会话、业务用户映射和业务权限需适配接入方现有系统。Spring Boot 2.7.18 用于保留 JDK 8 兼容性。远端协议的字段细节以 SSO 管理员提供的《SSO V2 接口文档》为准；本仓库提供客户端使用到的摘要。
