@@ -38,6 +38,32 @@ async function refresh() {
   }
 }
 
+async function logoutGlobal() {
+  busy.value = true
+  try {
+    const result = await request('/api/auth/logout/global', 'POST')
+    log(result.message || '正在退出整个服务...')
+    if (result.logoutUrl) {
+      window.location.href = result.logoutUrl
+      return
+    }
+  } catch (error) {
+    let message = '全局退出失败'
+    if (error instanceof Error) {
+      message = error.message
+    }
+    log(message)
+  } finally {
+    try {
+      await refresh()
+    } catch {
+      log('刷新本地状态失败，请检查后端连接')
+    } finally {
+      busy.value = false
+    }
+  }
+}
+
 async function logoutSystem() {
   // 1. 显示处理中状态，再调用本地退出接口。
   busy.value = true
@@ -81,6 +107,7 @@ onMounted(refresh)
       <p v-else>直接点击下面任一页面。B 后端会自动引导到 SSO，并从同一个固定回调返回。</p>
       <button @click="refresh">刷新本地状态</button>
       <button :disabled="busy || !user" @click="logoutSystem">退出 B 系统</button>
+      <button :disabled="busy || !user" class="btn-global-logout" @click="logoutGlobal">退出整个服务</button>
     </section>
 
     <section>
@@ -166,6 +193,14 @@ button {
 button:disabled {
   opacity: .45;
   cursor: default;
+}
+
+button.btn-global-logout {
+  background: #c0392b;
+}
+
+button.btn-global-logout:hover:not(:disabled) {
+  background: #a93226;
 }
 
 dl {

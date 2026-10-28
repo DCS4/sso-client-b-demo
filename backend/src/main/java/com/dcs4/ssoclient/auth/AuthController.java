@@ -1,6 +1,8 @@
 package com.dcs4.ssoclient.auth;
 
 import com.dcs4.ssoclient.auth.PageAccessService.LogoutSummary;
+import com.dcs4.ssoclient.config.SsoConfig;
+import com.dcs4.ssoclient.sso.SsoGateway;
 import java.net.URI;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -23,10 +25,15 @@ public class AuthController {
   private static final Logger log = LoggerFactory.getLogger(AuthController.class);
   private final PageAccessService access;
   private final PageCatalog pages;
+  private final SsoGateway sso;
+  private final SsoConfig config;
 
-  public AuthController(PageAccessService access, PageCatalog pages) {
+  public AuthController(
+      PageAccessService access, PageCatalog pages, SsoGateway sso, SsoConfig config) {
     this.access = access;
     this.pages = pages;
+    this.sso = sso;
+    this.config = config;
   }
 
   @GetMapping("/api/csrf")
@@ -73,6 +80,29 @@ public class AuthController {
     result.put("attempted", Integer.valueOf(summary.getAttempted()));
     result.put("confirmed", Integer.valueOf(summary.getConfirmed()));
     return result;
+  }
+
+  /** 退出整个服务（SSO 全局单点退出）：清理本地会话并提供 SSO 全局退出 URL，供前端跳转销毁 SSO 全局 Cookie。 */
+  @PostMapping("/api/auth/logout/global")
+  public Map<String, Object> logoutGlobal(HttpServletRequest request) {
+    // 1. 撤销本系统保存的全部 Token 并销毁本地会话
+    access.logoutSystem(request.getSession(false));
+    // 2. 构造 SSO 全局退出端点 URL，登出后跳回 B 系统首页（与登记的 sys_address 同源）
+    String redirectUri = URI.create(config.getCallbackUrl()).resolve("/").toString();
+    String ssoLogoutUrl = sso.globalLogoutUrl(redirectUri);
+    log.info("[AuthController] 客户端发起全局退出，已销毁本地会话，返回 SSO 全局退出地址: {}", ssoLogoutUrl);
+    Map<String, Object> result = new LinkedHashMap<String, Object>();
+    result.put("message", "本地会话已清除，正在跳转统一认证中心注销全局会话...");
+    result.put("logoutUrl", ssoLogoutUrl);
+    return result;
+  }
+
+  @GetMapping("/api/auth/logout/global")
+  public ResponseEntity<Void> logoutGlobalGet(HttpServletRequest request) {
+    access.logoutSystem(request.getSession(false));
+    String redirectUri = URI.create(config.getCallbackUrl()).resolve("/").toString();
+    String ssoLogoutUrl = sso.globalLogoutUrl(redirectUri);
+    return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(ssoLogoutUrl)).build();
   }
 
 }

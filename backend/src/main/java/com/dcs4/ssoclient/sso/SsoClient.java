@@ -149,6 +149,16 @@ public class SsoClient implements SsoGateway {
   }
 
   /** 注销的是当前页面 Token family，不会退出 Portal 全局 SID。 */
+  /** 生成客户端发起的 SSO 全局退出地址，供浏览器跳转销毁 SSO 全局 Cookie 并重定向回业务系统。 */
+  @Override
+  public String globalLogoutUrl(String postLogoutRedirectUri) {
+    config.requireBackendCredentials();
+    return UriComponentsBuilder.fromHttpUrl(config.endpoint("/logout"))
+        .queryParam("client_id", config.getClientId())
+        .queryParam("post_logout_redirect_uri", postLogoutRedirectUri)
+        .build().encode().toUriString();
+  }
+
   @Override
   public boolean logout(String accessToken) {
     log.info("[SsoClient] 正在调用 SSO /logout 注销页面 Token");

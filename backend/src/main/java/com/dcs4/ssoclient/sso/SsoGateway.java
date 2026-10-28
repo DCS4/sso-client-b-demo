@@ -30,6 +30,9 @@ public interface SsoGateway {
   /** 只撤销当前客户端的 Token family；不能代替 Portal 的全局 SID 登出。 */
   boolean logout(String accessToken);
 
+  /** 生成客户端发起的 SSO 全局退出地址，供浏览器跳转销毁 SSO 全局 Cookie 并重定向回业务系统。 */
+  String globalLogoutUrl(String postLogoutRedirectUri);
+
   /** 协议拒绝与 SSO 服务不可达需区分，业务链路对不可达应 fail closed。 */
   class SsoClientException extends RuntimeException {
     private static final long serialVersionUID = 1L;

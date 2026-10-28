@@ -50,6 +50,18 @@ class WebTest {
   }
 
   @Test
+  void globalLogoutRequiresCsrf() throws Exception {
+    mvc.perform(post("/api/auth/logout/global")).andExpect(status().isForbidden());
+  }
+
+  @Test
+  void globalLogoutWithCsrfReturnsSsoLogoutUrl() throws Exception {
+    mvc.perform(post("/api/auth/logout/global").with(csrf()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.logoutUrl").isNotEmpty());
+  }
+
+  @Test
   void systemLogoutWithCsrfKeepsItsSummaryResponse() throws Exception {
     mvc.perform(post("/api/auth/logout/system").with(csrf()))
         .andExpect(status().isOk())
