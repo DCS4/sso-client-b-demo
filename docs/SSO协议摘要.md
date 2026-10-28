@@ -16,9 +16,10 @@ http://SSO-IP:19089/oauth2Server/oauth2
 | POST form | `/token` | 外部系统后端 |
 | POST JSON | `/checkAccessToken` | 外部系统后端 |
 | POST form | `/getUserInfoByOauth2` | 外部系统后端 |
-| POST JSON | `/logout` | 外部系统后端 |
+| POST JSON | `/logout` | 外部系统后端（撤销单页/本系统 Token family） |
+| GET | `/logout` | 浏览器顶层导航（客户端发起全局单点退出） |
 
-除 `/authorize` 外，不允许浏览器或 Vue 直接调用 SSO。
+除 `/authorize` 和 `GET /logout`（浏览器顶层跳转）外，不允许浏览器或 Vue 直接调用 SSO。
 
 ## 授权
 
@@ -114,7 +115,11 @@ tokenValue=...
 
 当前只返回 `id`、`userCode`、`name`、`companyCode`、`enableStatus`，不返回任何密码字段。
 
-## 注销
+## 注销与全局单点退出
+
+SSO V2 区分**页面 Token 注销（仅退当前客户端）**与**客户端全局单点退出（退出整个统一认证服务）**：
+
+### 1. 页面 Token 注销（仅退出当前系统）
 
 ```http
 POST /logout
@@ -127,7 +132,20 @@ Content-Type: application/json
 }
 ```
 
-该接口只撤销当前页面授权对应的 Token family，不注销 Portal 全局 SID。外部系统可以逐个注销自己保存的页面 Token；Portal 全局退出后，其它系统会在下一次页面校验时发现 SID 已失效。
+该接口只撤销当前页面授权对应的 Token family，**不注销** Portal 全局 SID。外部系统在用户点击“退出 B 系统”时逐个注销自己保存的页面 Token 并销毁本地会话；由于全局 SID 仍在，再次访问业务页面时可能静默免密完成授权。
+
+### 2. 客户端全局单点退出（退出整个服务 / RP-Initiated Single Logout）
+
+```http
+GET /logout?client_id=client_xxx
+  &post_logout_redirect_uri=http%3A%2F%2FB-IP%3A18085%2F
+```
+
+当用户点击“退出整个服务”时，外部系统先清理本地 Token 与本地会话，再引导浏览器顶层跳转到该地址：
+- SSO 校验 `client_id` 已启用，且 `post_logout_redirect_uri` 与管理端登记的 `sysAddress` 严格同源（协议、主机、端口一致）；
+- SSO 从浏览器请求读取 `SSO_SID` Cookie，销毁 Redis 中的全局根会话，并清理该客户端下关联的全部 Token family；
+- SSO 下发 `Set-Cookie: SSO_SID=; Max-Age=0` 清除浏览器 Cookie，并 302 重定向回 `post_logout_redirect_uri`；
+- 再次点击任何受保护业务页面时，不再免密静默放行，必须重新进入统一登录页输入账号密码后再授权。
 
 ## 错误原则
 

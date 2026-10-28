@@ -38,11 +38,14 @@ async function refresh() {
   }
 }
 
+// 退出整个服务：先由 B 后端清理本地 Token 与会话，再整页跳转到 SSO GET /logout 销毁全局会话与 SSO_SID Cookie。
 async function logoutGlobal() {
+  // 1. 显示处理中状态，调用 B 后端全局退出接口。
   busy.value = true
   try {
     const result = await request('/api/auth/logout/global', 'POST')
     log(result.message || '正在退出整个服务...')
+    // 2. 浏览器顶层导航到 SSO 全局登出端点；SSO 清理 Cookie 后会自动 302 回跳 B 首页。
     if (result.logoutUrl) {
       window.location.href = result.logoutUrl
       return
@@ -54,6 +57,7 @@ async function logoutGlobal() {
     }
     log(message)
   } finally {
+    // 3. 若未发生整页跳转，恢复本地状态与按钮可用性。
     try {
       await refresh()
     } catch {

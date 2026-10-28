@@ -22,7 +22,9 @@ Vue 首页只展示本地用户摘要、演示页面目录和退出结果。SSO 
 | `GET /api/pages` | fetch 获取演示目录 | 是 |
 | `GET /api/auth/me` | fetch 读取本地会话摘要 | 是 |
 | `GET /api/csrf` | POST 前 fetch 获取本地 CSRF Token | 是 |
-| `POST /api/auth/logout/system` | 带 CSRF 请求头，退出 B | 是 |
+| `POST /api/auth/logout/system` | 带 CSRF 请求头，仅退出 B 系统（保留 SSO 全局会话） | 是（“退出 B 系统”按钮） |
+| `POST /api/auth/logout/global` | 带 CSRF 请求头，清理 B 本地会话并返回 SSO 全局登出跳转地址 | 是（“退出整个服务”按钮） |
+| `GET /api/auth/logout/global` | 浏览器直接导航触发本地清理并 303 跳转 SSO 全局登出 | 后端已提供，支持整页直接跳转 |
 | `POST /api/auth/logout/page/{pageCode}` | 带 CSRF 请求头，清理相应授权 | 后端已提供，首页无按钮 |
 | `GET /pages/orders` 等 | 普通链接或 window.location.assign，整页导航 | 是 |
 | `GET /api/auth/callback` | 由 SSO 通过浏览器回跳 | 前端代码不主动 fetch |
@@ -115,6 +117,19 @@ console.log(result.message)
 ```
 
 `attempted` 是尝试注销的不同 Token 数，`confirmed` 是 SSO 确认撤销的数量。即使远端未全部确认，本地 Session 也会被销毁；前端在 finally 中刷新本地状态。已有 Portal 会话可能使下次授权静默完成。
+
+全局退出（退出整个服务）响应示例：
+
+```json
+{
+  "message":"本地会话已清除，正在跳转统一认证中心注销全局会话...",
+  "attempted":1,
+  "confirmed":1,
+  "logoutUrl":"http://localhost:19089/oauth2Server/oauth2/logout?client_id=demo_client_b&post_logout_redirect_uri=http://localhost:18085/"
+}
+```
+
+前端收到 `logoutUrl` 后立即执行 `window.location.href = result.logoutUrl`，由浏览器顶层导航到 SSO 清除 `SSO_SID` Cookie 并销毁全局会话，随后 SSO 自动 302 跳回 B 首页。此后再次点击业务页面必须重新输入账号密码登录。
 
 单页退出调用示例：
 

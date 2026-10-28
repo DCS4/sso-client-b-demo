@@ -1,8 +1,7 @@
 package com.dcs4.ssoclient.auth;
 
+import com.dcs4.ssoclient.auth.PageAccessService.GlobalLogoutResult;
 import com.dcs4.ssoclient.auth.PageAccessService.LogoutSummary;
-import com.dcs4.ssoclient.config.SsoConfig;
-import com.dcs4.ssoclient.sso.SsoGateway;
 import java.net.URI;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -19,21 +18,16 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 接入入口：固定回调、CSRF Token 和本地退出。HTTP 路径与演示首页解耦。 */
+/** 接入入口：固定回调、CSRF Token、本地退出与全局单点退出。HTTP 路径与演示首页解耦。 */
 @RestController
 public class AuthController {
   private static final Logger log = LoggerFactory.getLogger(AuthController.class);
   private final PageAccessService access;
   private final PageCatalog pages;
-  private final SsoGateway sso;
-  private final SsoConfig config;
 
-  public AuthController(
-      PageAccessService access, PageCatalog pages, SsoGateway sso, SsoConfig config) {
+  public AuthController(PageAccessService access, PageCatalog pages) {
     this.access = access;
     this.pages = pages;
-    this.sso = sso;
-    this.config = config;
   }
 
   @GetMapping("/api/csrf")
@@ -82,27 +76,32 @@ public class AuthController {
     return result;
   }
 
-  /** 退出整个服务（SSO 全局单点退出）：清理本地会话并提供 SSO 全局退出 URL，供前端跳转销毁 SSO 全局 Cookie。 */
+  /**
+   * 退出整个服务（客户端发起的 SSO 全局单点退出）：
+   * 1. 先清理 B 本地全部 Token 与 HttpSession；
+   * 2. 返回 SSO 全局登出地址（GET /logout），由前端引导浏览器顶层跳转以清除 SSO_SID Cookie 并销毁全局会话。
+   */
   @PostMapping("/api/auth/logout/global")
   public Map<String, Object> logoutGlobal(HttpServletRequest request) {
-    // 1. 撤销本系统保存的全部 Token 并销毁本地会话
-    access.logoutSystem(request.getSession(false));
-    // 2. 构造 SSO 全局退出端点 URL，登出后跳回 B 系统首页（与登记的 sys_address 同源）
-    String redirectUri = URI.create(config.getCallbackUrl()).resolve("/").toString();
-    String ssoLogoutUrl = sso.globalLogoutUrl(redirectUri);
-    log.info("[AuthController] 客户端发起全局退出，已销毁本地会话，返回 SSO 全局退出地址: {}", ssoLogoutUrl);
+    // 1. 清理本地会话并生成 SSO 全局退出跳转地址。
+    GlobalLogoutResult globalLogout = access.logoutGlobal(request.getSession(false));
+    log.info("[AuthController] 客户端发起全局退出，已销毁本地会话，返回 SSO 全局退出地址: {}",
+        globalLogout.getLogoutUrl());
+    // 2. 返回本地清理统计与远端跳转 URL，由前端执行整页导航。
     Map<String, Object> result = new LinkedHashMap<String, Object>();
     result.put("message", "本地会话已清除，正在跳转统一认证中心注销全局会话...");
-    result.put("logoutUrl", ssoLogoutUrl);
+    result.put("attempted", Integer.valueOf(globalLogout.getAttempted()));
+    result.put("confirmed", Integer.valueOf(globalLogout.getConfirmed()));
+    result.put("logoutUrl", globalLogout.getLogoutUrl());
     return result;
   }
 
+  /** 支持浏览器直接 GET 触发全局退出（清理本地会话后 303 重定向至 SSO 全局退出端点）。 */
   @GetMapping("/api/auth/logout/global")
   public ResponseEntity<Void> logoutGlobalGet(HttpServletRequest request) {
-    access.logoutSystem(request.getSession(false));
-    String redirectUri = URI.create(config.getCallbackUrl()).resolve("/").toString();
-    String ssoLogoutUrl = sso.globalLogoutUrl(redirectUri);
-    return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(ssoLogoutUrl)).build();
+    GlobalLogoutResult globalLogout = access.logoutGlobal(request.getSession(false));
+    return ResponseEntity.status(HttpStatus.SEE_OTHER)
+        .location(URI.create(globalLogout.getLogoutUrl()))
+        .build();
   }
-
 }

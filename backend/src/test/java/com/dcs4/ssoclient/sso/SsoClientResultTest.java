@@ -34,6 +34,7 @@ class SsoClientResultTest {
     when(config.getCallbackUrl()).thenReturn("http://127.0.0.1:18085/api/auth/callback");
     when(config.endpoint("/token")).thenReturn("http://127.0.0.1:19089/oauth2Server/oauth2/token");
     when(config.endpoint("/checkAccessToken")).thenReturn("http://127.0.0.1:19089/oauth2Server/oauth2/checkAccessToken");
+    when(config.endpoint("/logout")).thenReturn("http://127.0.0.1:19089/oauth2Server/oauth2/logout");
     sso = new SsoClient(config, new ObjectMapper(), new RestTemplateBuilder());
     server = MockRestServiceServer.bindTo((RestTemplate) ReflectionTestUtils.getField(sso, "http")).build();
   }
@@ -80,5 +81,14 @@ class SsoClientResultTest {
             + "\"data\":{\"active\":true}}", MediaType.APPLICATION_JSON));
     assertThrows(SsoGateway.SsoClientException.class, () -> sso.checkAccessToken("invalid", "B_PAGE_01"));
     server.verify();
+  }
+
+  @Test
+  void globalLogoutUrlBuildsRedirectUriWithoutSecret() {
+    String url = sso.globalLogoutUrl("http://127.0.0.1:18085/");
+    assertEquals(
+        "http://127.0.0.1:19089/oauth2Server/oauth2/logout?client_id=client-b&post_logout_redirect_uri=http://127.0.0.1:18085/",
+        url);
+    assertFalse(url.contains("secret"));
   }
 }

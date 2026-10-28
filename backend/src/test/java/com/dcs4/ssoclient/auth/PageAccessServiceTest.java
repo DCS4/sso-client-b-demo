@@ -278,6 +278,25 @@ class PageAccessServiceTest {
     verify(gateway, never()).checkAccessToken("new", page.getCode());
   }
 
+  @Test
+  void logoutGlobalClearsLocalSessionAndBuildsSsoLogoutUrl() {
+    MockHttpSession session = new MockHttpSession();
+    tokens.put(session, page.getCode(), new StoredToken(token("access-1", "refresh-1"), 1000L));
+    when(config.getCallbackUrl()).thenReturn("http://localhost:18085/api/auth/callback");
+    when(gateway.logout("access-1")).thenReturn(true);
+    when(gateway.globalLogoutUrl("http://localhost:18085/"))
+        .thenReturn("http://localhost:19089/oauth2Server/oauth2/logout?client_id=client-b&post_logout_redirect_uri=http://localhost:18085/");
+
+    PageAccessService.GlobalLogoutResult result = access.logoutGlobal(session);
+
+    assertEquals(1, result.getAttempted());
+    assertEquals(1, result.getConfirmed());
+    assertEquals(
+        "http://localhost:19089/oauth2Server/oauth2/logout?client_id=client-b&post_logout_redirect_uri=http://localhost:18085/",
+        result.getLogoutUrl());
+    assertTrue(session.isInvalid());
+  }
+
   private TokenData token(String accessToken, String refreshToken) {
     TokenData token = new TokenData();
     token.setAccessToken(accessToken);

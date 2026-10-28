@@ -257,6 +257,23 @@ public class PageAccessService {
     return new LogoutSummary(attempted, confirmed);
   }
 
+  /**
+   * 【全局单点退出（RP-Initiated Single Logout）】
+   *
+   * <p>1. 先调用 logoutSystem 逐个撤销 B 系统保存的本地 Token 并销毁本地 HttpSession；
+   * 2. 从已登记的固定回调地址提取系统根地址（如 http://localhost:18085/），确保与 SSO 登记的 sysAddress 同源；
+   * 3. 生成 SSO 全局登出地址（GET /logout），供浏览器顶层跳转以清除 SSO_SID Cookie 并销毁服务端全局会话。</p>
+   */
+  public GlobalLogoutResult logoutGlobal(HttpSession session) {
+    // 1. 先清理本系统保存的全部页面 Token 并销毁本地会话。
+    LogoutSummary summary = logoutSystem(session);
+    // 2. 从固定回调地址推导与 SSO 登记同源的系统首页地址，作为全局退出后的回跳目标。
+    String postLogoutRedirectUri = URI.create(config.getCallbackUrl()).resolve("/").toString();
+    // 3. 生成不含密钥的 SSO 全局登出地址，交由前端触发浏览器整页跳转。
+    String logoutUrl = sso.globalLogoutUrl(postLogoutRedirectUri);
+    return new GlobalLogoutResult(summary.getAttempted(), summary.getConfirmed(), logoutUrl);
+  }
+
   /** 同一会话锁内只用一次旧 RefreshToken，验证后成对替换新 Access/Refresh。 */
   private StoredToken tryRefresh(
       HttpSession session, String tokenKey, StoredToken current, String pageCode) {
@@ -411,6 +428,30 @@ public class PageAccessService {
 
     public int getConfirmed() {
       return confirmed;
+    }
+  }
+
+  public static final class GlobalLogoutResult {
+    private final int attempted;
+    private final int confirmed;
+    private final String logoutUrl;
+
+    private GlobalLogoutResult(int attempted, int confirmed, String logoutUrl) {
+      this.attempted = attempted;
+      this.confirmed = confirmed;
+      this.logoutUrl = logoutUrl;
+    }
+
+    public int getAttempted() {
+      return attempted;
+    }
+
+    public int getConfirmed() {
+      return confirmed;
+    }
+
+    public String getLogoutUrl() {
+      return logoutUrl;
     }
   }
 }

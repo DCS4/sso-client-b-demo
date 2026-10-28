@@ -1,29 +1,55 @@
-# 唯一的默认配置。复制根目录 .env.example 为 .env，填写当前环境的值。
-# .env 按 Java properties 格式读取：KEY=value，不写 export，不给值额外加引号。
+# ============================================================================
+# SSO V2 外部系统（B 系统）唯一默认配置文件
+# ============================================================================
+# 使用说明：
+# 1. 请复制仓库根目录下的 .env.example 为 .env，并在 .env 中填写当前环境的真实值；
+# 2. .env 按标准 Java properties 格式解析（KEY=value），不写 export，不给值额外加引号；
+# 3. 真实 .env 已被 .gitignore 忽略，严禁将真实 client_secret 提交到代码仓库。
+# ============================================================================
+
 spring:
   config:
+    # 支持从仓库根目录（.env）或 backend 子目录（../.env）启动时自动加载环境配置
     import: "optional:file:.env[.properties],optional:file:../.env[.properties]"
 
 server:
+  # B 系统后端监听端口（默认 18085）
   port: ${SERVER_PORT:18085}
   servlet:
     session:
+      # B 系统本地 HttpSession 超时时间（默认 30 分钟）
       timeout: 30m
       cookie:
+        # B 系统本地会话 Cookie 名称（与 SSO 中心的 SSO_SID 相互独立）
         name: B_DEMO_SESSION
+        # 禁止前端 JS 读取 Cookie，防御 XSS 窃取会话
         http-only: true
+        # 允許从 SSO 302/303 跨站顶级导航回跳时携带本地会话 Cookie
         same-site: lax
+        # 本地 HTTP 联调设为 false；生产环境启用 HTTPS 时应设为 true
         secure: ${COOKIE_SECURE:false}
 
 sso:
-  # 远端 SSO V2 接口前缀；不是 Portal 的网页地址。
+  # 1. 远端 SSO V2 公共协议前缀（指向 sac-sso 的 /oauth2Server/oauth2，不是 Portal 登录网页地址，也不是 /internal/sso）
   base-url: ${SSO_BASE_URL:http://localhost:19089/oauth2Server/oauth2}
+
+  # 2. 客户端应用唯一标识（对应 SSO 管理端 sys_sso.client_id）
   client-id: ${SSO_CLIENT_ID:demo_client_b}
+
+  # 3. 客户端明文密钥（由 SSO 管理端新增客户端或 rotateSecret 时一次性生成下发，仅保存在 B 后端，绝不传给前端）
   client-secret: ${SSO_CLIENT_SECRET:}
-  # 单 JAR 示例用 18085；Vite 双进程开发时改为 5173，并同步 SSO 登记。
+
+  # 4. 唯一固定回调地址（必须等于 SSO 管理端登记的 sysAddress + callbackAddress）
+  #    - 单 JAR 模式默认：http://localhost:18085/api/auth/callback
+  #    - Vite 双进程开发模式：http://localhost:5173/api/auth/callback（需同步修改 SSO 管理端登记）
+  #    - 同时用于推导全局退出（GET /logout）的回跳根地址 post_logout_redirect_uri（如 http://localhost:18085/）
   callback-url: ${B_CALLBACK_URL:http://localhost:18085/api/auth/callback}
-  # 与 SSO 管理端保持一致：PAGE_CONTROLLED 或 SSO_ONLY。
+
+  # 5. 客户端认证模式（必须与 SSO 管理端登记的认证模式保持一致）：
+  #    - PAGE_CONTROLLED：页面受控模式（对应服务端枚举编码 0），每次访问按 page_code 独立签发并实时校验页面权限
+  #    - SSO_ONLY       ：普通单点登录模式（对应服务端枚举编码 1），全系统共用一组 Token，仅校验统一登录身份
   auth-mode: ${SSO_AUTH_MODE:PAGE_CONTROLLED}
-#  auth-mode: ${SSO_AUTH_MODE:SSO_ONLY}
+
+  # 6. B 后端调用远端 SSO 接口的 HTTP 连接超时与读取超时
   connect-timeout: ${SSO_CONNECT_TIMEOUT:2s}
   read-timeout: ${SSO_READ_TIMEOUT:3s}
