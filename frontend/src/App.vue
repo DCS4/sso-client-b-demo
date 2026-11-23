@@ -8,7 +8,7 @@ type User = {
   name: string
   companyCode?: string
   authMode: string
-  authorizedTokenCount: number
+  authorizedTokenCount: number | null
 }
 type Page = {
   code: string
@@ -26,11 +26,11 @@ function log(message: string) {
   events.value = events.value.slice(0, 20)
 }
 
-// me 是本地会话摘要；页面链接仍需由后端实时校验。
+// 首页展示本地用户和经 SSO 校验的有效 AccessToken 数。
 async function refresh() {
   // 1. 读取首页显示的页面目录。
   pages.value = await request('/api/pages')
-  // 2. 读取本地用户摘要；请求失败时按现有示例显示为未登录。
+  // 2. 读取用户摘要和授权状态。
   try {
     user.value = await request('/api/auth/me')
   } catch {
@@ -106,10 +106,10 @@ onMounted(refresh)
       <dl v-if="user">
         <dt>用户</dt><dd>{{ user.name }}（{{ user.userCode }}）</dd>
         <dt>模式</dt><dd>{{ user.authMode }}</dd>
-        <dt>本地 Token 数</dt><dd>{{ user.authorizedTokenCount }}</dd>
+        <dt>有效访问令牌数</dt><dd>{{ user.authorizedTokenCount ?? '暂无法校验' }}</dd>
       </dl>
       <p v-else>直接点击下面任一页面。B 后端会自动引导到 SSO，并从同一个固定回调返回。</p>
-      <button @click="refresh">刷新本地状态</button>
+      <button @click="refresh">刷新授权状态</button>
       <button :disabled="busy || !user" @click="logoutSystem">退出 B 系统</button>
       <button :disabled="busy || !user" class="btn-global-logout" @click="logoutGlobal">退出整个服务</button>
     </section>

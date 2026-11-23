@@ -191,11 +191,25 @@ public class PageAccessService {
     return null;
   }
 
-  public int authorizedPageCount(HttpSession session) {
+  /** 首页只校验本会话已有的 AccessToken，网关失败时返回 null 表示当前状态未知。 */
+  public Integer countValidAccessTokens(HttpSession session) {
     if (session == null) {
       return 0;
     }
-    return tokens.size(session);
+    int validCount = 0;
+    try {
+      for (StoredToken token : tokens.snapshot(session)) {
+        String pageCode = token.getPageCode();
+        ActiveTokenData checked = sso.checkAccessToken(token.getAccessToken(), pageCode);
+        if (matches(checked, token, pageCode)) {
+          validCount++;
+        }
+      }
+    } catch (SsoClientException error) {
+      log.warn("[PageAccessService] 首页授权状态校验未完成: {}", error.getMessage());
+      return null;
+    }
+    return validCount;
   }
 
   /** 清本地该页面授权并撤销其 Token family；不影响 Portal SID。 */

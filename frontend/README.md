@@ -1,6 +1,6 @@
 # 前端接入说明
 
-Vue 首页只展示本地用户摘要、演示页面目录和退出结果。SSO 的授权码兑换、Token 刷新、远端校验都在 B 后端完成；前端不需要 SSO SDK，也不保存 SSO Token 或 client_secret。
+Vue 首页展示本地用户摘要、有效访问令牌数、演示页面目录和退出结果。SSO 的授权码兑换、Token 刷新和远端校验都在 B 后端完成，浏览器通过 B 的会话 Cookie 调用同源接口。
 
 ## 1. 文件职责
 
@@ -20,7 +20,7 @@ Vue 首页只展示本地用户摘要、演示页面目录和退出结果。SSO 
 | 方法和路径 | 如何调用 | 当前首页是否使用 |
 | --- | --- | --- |
 | `GET /api/pages` | fetch 获取演示目录 | 是 |
-| `GET /api/auth/me` | fetch 读取本地会话摘要 | 是 |
+| `GET /api/auth/me` | fetch 读取本地用户摘要与有效访问令牌数 | 是 |
 | `GET /api/csrf` | POST 前 fetch 获取本地 CSRF Token | 是 |
 | `POST /api/auth/logout/system` | 带 CSRF 请求头，仅退出 B 系统（保留 SSO 全局会话） | 是（“退出 B 系统”按钮） |
 | `POST /api/auth/logout/global` | 带 CSRF 请求头，清理 B 本地会话并返回 SSO 全局登出跳转地址 | 是（“退出整个服务”按钮） |
@@ -43,7 +43,7 @@ Vue 首页只展示本地用户摘要、演示页面目录和退出结果。SSO 
 
 它不表示当前用户拥有这些权限。真正点击链接后，B 后端才检查是否允许访问。
 
-### 本地用户摘要
+### 用户摘要与有效访问令牌数
 
 `GET /api/auth/me` 没有本地用户时返回 **401，响应体为空**；有本地用户时返回：
 
@@ -58,7 +58,7 @@ Vue 首页只展示本地用户摘要、演示页面目录和退出结果。SSO 
 }
 ```
 
-`authMode` 是后端当前模式；`authorizedTokenCount` 是本地保存的 Token 数。这个接口不执行远端实时校验，因此 Portal 已退出或页面权限发生变化时，它仍可能显示缓存的用户。业务授权请使用页面守卫或受保护的数据接口。
+`authMode` 是后端当前模式。`authorizedTokenCount` 是本地会话中经 SSO `checkAccessToken` 校验仍有效的 AccessToken 数，SSO 请求失败时返回 `null`，页面显示「暂无法校验」。本地用户摘要可以继续显示，即使有效数量为 `0`。首页只校验已有令牌，进入业务页面时才按需刷新令牌或重新授权。
 
 ## 3. 初始化与登录怎样处理
 

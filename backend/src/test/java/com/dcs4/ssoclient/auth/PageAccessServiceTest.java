@@ -72,6 +72,43 @@ class PageAccessServiceTest {
   }
 
   @Test
+  void homepageCountsOnlyTokensStillAcceptedBySso() {
+    // 远端撤销两页后，只重新授权订单页，首页计数应从 0 变成 1。
+    MockHttpSession session = new MockHttpSession();
+    long now = System.currentTimeMillis() / 1000L;
+    TokenData reportToken = token("report-old", "refresh-report");
+    reportToken.setPageCode("B_PAGE_02");
+    tokens.put(session, "B_PAGE_01", new StoredToken(token("order-old", "refresh-order"), now));
+    tokens.put(session, "B_PAGE_02", new StoredToken(reportToken, now));
+    when(gateway.checkAccessToken("order-old", "B_PAGE_01")).thenReturn(new ActiveTokenData());
+    when(gateway.checkAccessToken("report-old", "B_PAGE_02")).thenReturn(new ActiveTokenData());
+
+    assertEquals(Integer.valueOf(0), access.countValidAccessTokens(session));
+
+    tokens.put(session, "B_PAGE_01", new StoredToken(token("order-new", "refresh-new"), now));
+    when(gateway.checkAccessToken("order-new", "B_PAGE_01")).thenReturn(active("user-1"));
+    assertEquals(Integer.valueOf(1), access.countValidAccessTokens(session));
+    assertEquals(2, tokens.size(session));
+    verify(gateway, never()).refresh(anyString());
+    verify(gateway, never()).authorizeUrl(anyString(), anyString());
+  }
+
+  @Test
+  void homepageReportsUnknownWhenSsoIsUnavailable() {
+    // SSO 通信故障时保留缓存，首页不能用缓存条数或 0 冒充校验结果。
+    MockHttpSession session = new MockHttpSession();
+    StoredToken cached = new StoredToken(token("old", "refresh-old"), System.currentTimeMillis() / 1000L);
+    tokens.put(session, page.getCode(), cached);
+    when(gateway.checkAccessToken("old", page.getCode()))
+        .thenThrow(new SsoClientException("SSO unavailable", true));
+
+    assertNull(access.countValidAccessTokens(session));
+    assertSame(cached, tokens.get(session, page.getCode()));
+    verify(gateway, never()).refresh(anyString());
+    verify(gateway, never()).authorizeUrl(anyString(), anyString());
+  }
+
+  @Test
   void expiredAccessUsesRefreshOnceAndReplacesBothTokens() {
     MockHttpServletRequest request = new MockHttpServletRequest();
     tokens.put(request.getSession(), page.getCode(), new StoredToken(token("old", "refresh-old"), System.currentTimeMillis() / 1000L));

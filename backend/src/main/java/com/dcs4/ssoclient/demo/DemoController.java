@@ -16,7 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 首页展示接口。me 读取本地会话摘要，pages 返回演示目录；两者不代替页面访问校验。 */
+/** 首页展示接口。me 返回本地用户摘要和实时校验的授权数量，pages 返回演示目录。 */
 @RestController
 public class DemoController {
   private final PageAccessService access;
@@ -31,20 +31,20 @@ public class DemoController {
 
   @GetMapping("/api/auth/me")
   public ResponseEntity<Map<String, Object>> me(HttpServletRequest request) {
-    // 1. 只读取已有本地会话，不在展示接口中发起 SSO 授权。
+    // 1. 首页沿用已有本地会话，业务页面负责发起新授权。
     HttpSession session = request.getSession(false);
     UserInfo user = access.currentUser(session);
     if (user == null) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
-    // 2. 返回首页需要的用户摘要，不返回 SSO Token。
+    // 2. 校验已有 AccessToken，首页只接收数量和用户摘要。
     Map<String, Object> result = new LinkedHashMap<String, Object>();
     result.put("id", user.getId());
     result.put("userCode", user.getUserCode());
     result.put("name", user.getName());
     result.put("companyCode", user.getCompanyCode());
     result.put("authMode", config.getAuthMode());
-    result.put("authorizedTokenCount", Integer.valueOf(access.authorizedPageCount(session)));
+    result.put("authorizedTokenCount", access.countValidAccessTokens(session));
     return ResponseEntity.ok(result);
   }
 
