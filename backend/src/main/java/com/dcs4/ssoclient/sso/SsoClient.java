@@ -196,7 +196,7 @@ public class SsoClient implements SsoGateway {
     return exchange(endpoint, request);
   }
 
-  /** 【协议错误边界】HTTP 网络错误与 V2 Result 业务失败不能混淆，更不能降级放行。 */
+  /** 【协议错误边界】HTTP 网络错误与 SSO Result 业务失败不能混淆，更不能降级放行。 */
   private ApiEnvelope exchange(String endpoint, HttpEntity<?> entity) {
     // nanoTime 只测本次 B -> SSO 的 HTTP 往返，不含浏览器跳转和用户输入密码时间。
     long startNanos = System.nanoTime();

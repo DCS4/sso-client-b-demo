@@ -14,7 +14,7 @@ public class SecurityConfig {
         .permitAll()
         .and()
         .csrf();
-    // SSO V2 没有外部 Back-Channel Logout 回调，因此所有本地 POST 都保留 CSRF 保护。
+    // SSO 没有外部 Back-Channel Logout 回调，因此所有本地 POST 都保留 CSRF 保护。
     http.formLogin().disable();
     http.httpBasic().disable();
     http.logout().disable();

@@ -97,7 +97,7 @@ onMounted(refresh)
 
 <template>
   <main>
-    <p class="eyebrow">SSO V2 · FIXED CALLBACK CLIENT</p>
+    <p class="eyebrow">SSO · FIXED CALLBACK CLIENT</p>
     <h1>业务系统 B</h1>
     <p>一个固定后端回调，配置选择普通 SSO 或页面受控模式。SSO Token 只保存在 B 后端。</p>
 

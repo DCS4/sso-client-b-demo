@@ -9,7 +9,7 @@ import com.dcs4.ssoclient.sso.SsoModels.UserInfo;
  *
  * <p>业务流程只依赖本接口，不关心 HTTP 表单、JSON 字段、client_secret 或具体 HTTP 客户端。
  * 其它厂商可以让现有后端 HTTP 客户端实现本接口；协议字段及错误处理参见 SsoClient。
- * 这里不是新增的服务端 API，也不改变原有 SSO V2 请求/响应契约。</p>
+ * 这里不是新增的服务端 API，也不改变原有 SSO 请求/响应契约。</p>
  */
 public interface SsoGateway {
   /** 浏览器只导航到公开的授权地址，client_secret 和 Token 不得出现在 URL 中。 */

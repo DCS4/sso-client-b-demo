@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.Serializable;
 
-/** 只定义外部系统实际使用的 V2 响应字段，未知字段由 Jackson 忽略。 */
+/** 只定义外部系统实际使用的 SSO 响应字段，未知字段由 Jackson 忽略。 */
 public final class SsoModels {
   private SsoModels() {}
 

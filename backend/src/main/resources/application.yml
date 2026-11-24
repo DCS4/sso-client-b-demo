@@ -1,5 +1,5 @@
 # ============================================================================
-# SSO V2 外部系统（B 系统）唯一默认配置文件
+# SSO 外部系统（B 系统）唯一默认配置文件
 # ============================================================================
 # 使用说明：
 # 1. 请复制仓库根目录下的 .env.example 为 .env，并在 .env 中填写当前环境的真实值；
@@ -30,7 +30,7 @@ server:
         secure: ${COOKIE_SECURE:false}
 
 sso:
-  # 1. 远端 SSO V2 公共协议前缀（指向 sac-sso 的 /oauth2Server/oauth2，不是 Portal 登录网页地址，也不是 /internal/sso）
+  # 1. 远端 SSO 公共协议前缀（指向 sac-sso 的 /oauth2Server/oauth2，不是 Portal 登录网页地址，也不是 /internal/sso）
   base-url: ${SSO_BASE_URL:http://localhost:19089/oauth2Server/oauth2}
 
   # 2. 客户端应用唯一标识（对应 SSO 管理端 sys_sso.client_id）

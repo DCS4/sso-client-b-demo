@@ -32,7 +32,7 @@ public class SsoConfig {
   @Value("${sso.read-timeout:3s}")
   private Duration readTimeout;
 
-  /** SSO V2 公共协议前缀；不是内部 /internal/sso 地址，也不是 Portal 前端地址。 */
+  /** SSO 公共协议前缀；不是内部 /internal/sso 地址，也不是 Portal 前端地址。 */
   public String endpoint(String path) {
     String value = require(baseUrl, "SSO_BASE_URL");
     if (value.endsWith("/")) {

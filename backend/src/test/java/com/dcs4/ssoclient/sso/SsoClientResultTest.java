@@ -19,7 +19,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
-/** 客户端 V2 响应采用 Result.success/message/result，禁止从失败外壳中放行 Token。 */
+/** SSO 客户端响应采用 Result.success/message/result，禁止从失败外壳中放行 Token。 */
 class SsoClientResultTest {
   private SsoClient sso;
   private MockRestServiceServer server;

@@ -21,12 +21,12 @@ final class PageView {
     String badge;
     String authDesc;
     if (isControlled) {
-      badge = "<span class=\"badge controlled\">SSO V2 · 页面受控示例 (PAGE_CONTROLLED)</span>";
+      badge = "<span class=\"badge controlled\">SSO · 页面受控示例 (PAGE_CONTROLLED)</span>";
       authDesc = "<p class=\"auth-desc\">当前处于 <strong>PAGE_CONTROLLED（页面受控）</strong> 模式。<br>"
           + "本次请求已由 B 系统后端使用 <code>accessToken + " + escape(page.getCode())
           + "</code> 向 SSO 实时校验页面级权限通过。</p>";
     } else {
-      badge = "<span class=\"badge sso-only\">SSO V2 · 业务页面示例 (SSO_ONLY)</span>";
+      badge = "<span class=\"badge sso-only\">SSO · 业务页面示例 (SSO_ONLY)</span>";
       authDesc = "<p class=\"auth-desc\">当前处于 <strong>SSO_ONLY（普通单点登录）</strong> 模式。<br>"
           + "B 系统共用一组系统级 Token；本次请求仍由后端向 SSO 实时校验身份，不向 SSO 查询页面权限。</p>";
     }
