@@ -1,6 +1,7 @@
 package com.dcs4.ssoclient.config;
 
 import java.time.Duration;
+import javax.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -26,6 +27,9 @@ public class SsoConfig {
   @Value("${sso.auth-mode:PAGE_CONTROLLED}")
   private String authMode;
 
+  @Value("${sso.require-external-account:false}")
+  private boolean externalAccountRequired;
+
   @Value("${sso.connect-timeout:2s}")
   private Duration connectTimeout;
 
@@ -48,6 +52,17 @@ public class SsoConfig {
     if (!PAGE_CONTROLLED.equals(authMode) && !SSO_ONLY.equals(authMode)) {
       throw new IllegalStateException("SSO_AUTH_MODE 只能是 PAGE_CONTROLLED 或 SSO_ONLY");
     }
+  }
+
+  @PostConstruct
+  void validateAccountMode() {
+    if (externalAccountRequired && !SSO_ONLY.equals(authMode)) {
+      throw new IllegalStateException("SSO_REQUIRE_EXTERNAL_ACCOUNT 仅适用于 SSO_ONLY");
+    }
+  }
+
+  public boolean isExternalAccountRequired() {
+    return externalAccountRequired;
   }
 
   public boolean isPageControlled() {

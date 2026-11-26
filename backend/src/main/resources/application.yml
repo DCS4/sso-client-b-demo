@@ -50,6 +50,9 @@ sso:
   #    - SSO_ONLY       ：普通单点登录模式（对应服务端枚举编码 1），全系统共用一组 Token，仅校验统一登录身份
   auth-mode: ${SSO_AUTH_MODE:PAGE_CONTROLLED}
 
+  # 仅普通单点登录可开启。须与平台的外部账号必绑配置配套使用。
+  require-external-account: ${SSO_REQUIRE_EXTERNAL_ACCOUNT:false}
+
   # 6. B 后端调用远端 SSO 接口的 HTTP 连接超时与读取超时
   connect-timeout: ${SSO_CONNECT_TIMEOUT:2s}
   read-timeout: ${SSO_READ_TIMEOUT:3s}

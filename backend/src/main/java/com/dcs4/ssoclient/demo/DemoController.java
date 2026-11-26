@@ -44,7 +44,12 @@ public class DemoController {
     result.put("name", user.getName());
     result.put("companyCode", user.getCompanyCode());
     result.put("authMode", config.getAuthMode());
-    result.put("authorizedTokenCount", access.countValidAccessTokens(session));
+    Integer authorizedCount = access.countValidAccessTokens(session);
+    result.put("authorizedTokenCount", authorizedCount);
+    String localUserId = access.currentLocalUserId(session);
+    if (localUserId != null && authorizedCount != null && authorizedCount > 0) {
+      result.put("localUserId", localUserId);
+    }
     return ResponseEntity.ok(result);
   }
 

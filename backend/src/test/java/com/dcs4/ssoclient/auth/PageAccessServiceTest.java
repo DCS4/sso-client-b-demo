@@ -11,6 +11,9 @@ import com.dcs4.ssoclient.sso.SsoModels.UserInfo;
 import java.net.URI;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpSession;
@@ -39,7 +42,7 @@ class PageAccessServiceTest {
     when(config.tokenKey(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
     states = new LoginStateStore();
     tokens = new PageTokenStore();
-    access = new PageAccessService(config, gateway, states, tokens);
+    access = new PageAccessService(config, gateway, states, tokens, localUserId -> "108".equals(localUserId));
     page = new PageCatalog().requireByCode("B_PAGE_01");
   }
 
@@ -332,6 +335,65 @@ class PageAccessServiceTest {
         "http://localhost:19089/oauth2Server/oauth2/logout?client_id=client-b&post_logout_redirect_uri=http://localhost:18085/",
         result.getLogoutUrl());
     assertTrue(session.isInvalid());
+  }
+
+  @Test
+  void boundCallbackEstablishesLocalAccountAndAllowsNextPage() {
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    String state = prepareBoundCallback(request, "108");
+
+    assertEquals(URI.create(page.getPath()), access.completeCallback(request, "bound-code", state, null));
+    assertEquals("user-1", access.currentUser(request.getSession()).getId());
+    assertEquals("108", access.currentLocalUserId(request.getSession()));
+    assertTrue(access.enter(request, page).isAllowed());
+  }
+
+  @ParameterizedTest
+  @NullAndEmptySource
+  @ValueSource(strings = {"109", "999"})
+  void boundCallbackRejectsMissingOrUnavailableLocalAccount(String localUserId) {
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    String state = prepareBoundCallback(request, localUserId);
+
+    ResponseStatusException error = assertThrows(ResponseStatusException.class,
+        () -> access.completeCallback(request, "bound-code", state, null));
+
+    assertEquals(HttpStatus.FORBIDDEN, error.getStatus());
+    assertNull(access.currentLocalUserId(request.getSession()));
+    assertNull(access.currentUser(request.getSession()));
+    assertEquals(0, tokens.size(request.getSession()));
+  }
+
+  @Test
+  void invalidPlatformGrantEndsBoundLocalLoginBeforeReauthorization() {
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    String state = prepareBoundCallback(request, "108");
+    access.completeCallback(request, "bound-code", state, null);
+    when(gateway.checkAccessToken("bound-access", page.getCode())).thenReturn(new ActiveTokenData());
+    when(gateway.refresh("bound-refresh")).thenThrow(new SsoClientException("授权已失效", false));
+    when(gateway.authorizeUrl(anyString(), eq(page.getCode())))
+        .thenReturn("http://sso.example.test/authorize");
+
+    assertFalse(access.enter(request, page).isAllowed());
+    assertNull(access.currentLocalUserId(request.getSession()));
+    assertNull(access.currentUser(request.getSession()));
+    assertEquals(0, tokens.size(request.getSession()));
+  }
+
+  private String prepareBoundCallback(MockHttpServletRequest request, String localUserId) {
+    when(config.isPageControlled()).thenReturn(false);
+    when(config.isExternalAccountRequired()).thenReturn(true);
+    when(config.tokenKey(anyString())).thenReturn("__SSO_ONLY__");
+    TokenData issued = token("bound-access", "bound-refresh");
+    issued.setPageCode(null);
+    ActiveTokenData checked = active("user-1");
+    checked.setPageCode(null);
+    UserInfo user = enabledUser("user-1");
+    user.setExternalUserId(localUserId);
+    when(gateway.exchangeCode("bound-code")).thenReturn(issued);
+    when(gateway.checkAccessToken("bound-access", page.getCode())).thenReturn(checked);
+    when(gateway.getUserInfo("bound-access")).thenReturn(user);
+    return states.begin(request.getSession(), page.getCode(), page.getPath());
   }
 
   private TokenData token(String accessToken, String refreshToken) {

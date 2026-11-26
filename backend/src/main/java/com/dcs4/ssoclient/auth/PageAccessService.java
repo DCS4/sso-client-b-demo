@@ -29,18 +29,22 @@ import org.springframework.web.server.ResponseStatusException;
 public class PageAccessService {
   private static final Logger log = LoggerFactory.getLogger(PageAccessService.class);
   private static final String USER_ATTRIBUTE = PageAccessService.class.getName() + ".user";
+  private static final String LOCAL_USER_ID_ATTRIBUTE = PageAccessService.class.getName() + ".localUserId";
 
   private final SsoConfig config;
   private final SsoGateway sso;
   private final LoginStateStore states;
   private final PageTokenStore tokens;
+  private final LocalAccountDirectory localAccounts;
 
   public PageAccessService(
-      SsoConfig config, SsoGateway sso, LoginStateStore states, PageTokenStore tokens) {
+      SsoConfig config, SsoGateway sso, LoginStateStore states, PageTokenStore tokens,
+      LocalAccountDirectory localAccounts) {
     this.config = config;
     this.sso = sso;
     this.states = states;
     this.tokens = tokens;
+    this.localAccounts = localAccounts;
   }
 
   /** 每次真实页面请求都从后端进入；只检查前端菜单不能防止直接 URL 越权。 */
@@ -54,6 +58,7 @@ public class PageAccessService {
     synchronized (session) {
       StoredToken current = tokens.get(session, tokenKey);
       if (current != null) {
+        verifyLocalAccount(session, currentLocalUserId(session));
         log.info("[PageAccessService] 发现本地缓存 Token，执行 checkAccessToken 校验: pageCode={}", page.getCode());
         // 2. 已有 Token 也要向 SSO 实时校验，通过后才返回页面。
         ActiveTokenData checked = checkOrFailClosed(current.getAccessToken(), page.getCode());
@@ -152,18 +157,20 @@ public class PageAccessService {
       log.info("[PageAccessService] 成功识别登录用户: name={}, userCode={}, companyCode={}",
           user.getName(), user.getUserCode(), user.getCompanyCode());
 
-      // 6. 同一个 B 会话切换账号时，先清除旧账号的全部本地页面授权。
-      //    这里只清 B 的 Session 缓存，不调用 Portal 的全局退出。
       synchronized (session) {
+        // 6. 平台身份核验通过后，再按平台提供的编号确认本地账号。
+        String localUserId = verifyLocalAccount(session, user.getExternalUserId());
         UserInfo previousUser = currentUser(session);
-        if (previousUser != null && !user.getId().equals(previousUser.getId())) {
+        if (previousUser != null && (!user.getId().equals(previousUser.getId())
+            || !Objects.equals(localUserId, currentLocalUserId(session)))) {
           tokens.clear(session);
         }
 
-        // 7. 原子更新身份和本次 Token；浏览器只接收会话 Cookie 和回跳地址。
+        // 7. 更新会话标识，将平台身份、本地账号与本次授权一起保存到后端。
         request.changeSessionId();
         tokens.put(session, config.tokenKey(transaction.getPageCode()), stored);
         session.setAttribute(USER_ATTRIBUTE, user);
+        session.setAttribute(LOCAL_USER_ID_ATTRIBUTE, localUserId);
       }
       log.info("[SSO-Timing] 固定回调完成: pageCode={}, browserRoundTripMs={}, callbackProcessingMs={}",
           transaction.getPageCode(), browserRoundTripMs(transaction),
@@ -189,6 +196,37 @@ public class PageAccessService {
       return (UserInfo) value;
     }
     return null;
+  }
+
+  public String currentLocalUserId(HttpSession session) {
+    return session == null ? null : (String) session.getAttribute(LOCAL_USER_ID_ATTRIBUTE);
+  }
+
+  /** 必绑模式下，只有平台指定的本地账号存在并启用时，才能继续使用本地会话。 */
+  private String verifyLocalAccount(HttpSession session, String localUserId) {
+    if (!config.isExternalAccountRequired()) {
+      return null;
+    }
+    if (!StringUtils.hasText(localUserId) || !localAccounts.isEnabled(localUserId)) {
+      tokens.clear(session);
+      clearLocalIdentity(session);
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "本地账号未开通或已停用");
+    }
+    return localUserId;
+  }
+
+  private StoredToken removeAuthorization(HttpSession session, String tokenKey) {
+    StoredToken removed = tokens.remove(session, tokenKey);
+    // 绑定模式只有一组系统授权，失去这组授权也要清除绑定的本地身份。
+    if (config.isExternalAccountRequired()) {
+      clearLocalIdentity(session);
+    }
+    return removed;
+  }
+
+  private void clearLocalIdentity(HttpSession session) {
+    session.removeAttribute(USER_ATTRIBUTE);
+    session.removeAttribute(LOCAL_USER_ID_ATTRIBUTE);
   }
 
   /** 首页只校验本会话已有的 AccessToken，网关失败时返回 null 表示当前状态未知。 */
@@ -218,7 +256,10 @@ public class PageAccessService {
       return false;
     }
     // 1. 先移除本地授权，随后才能尝试远端注销。
-    StoredToken token = tokens.remove(session, config.tokenKey(pageCode));
+    StoredToken token;
+    synchronized (session) {
+      token = removeAuthorization(session, config.tokenKey(pageCode));
+    }
     if (token == null) {
       return false;
     }
@@ -293,18 +334,21 @@ public class PageAccessService {
       HttpSession session, String tokenKey, StoredToken current, String pageCode) {
     // 1. 没有可用的 RefreshToken 时，清理该组本地 Token。
     if (!StringUtils.hasText(current.getRefreshToken()) || current.getRefreshExpiresAt() <= nowSeconds()) {
-      tokens.remove(session, tokenKey);
+      removeAuthorization(session, tokenKey);
       return null;
     }
     try {
       // 2. 申请新 Token 对，并核对返回的绑定信息。
       TokenData refreshed = sso.refresh(current.getRefreshToken());
       validateIssuedToken(refreshed, pageCode);
+      if (config.isExternalAccountRequired() && !current.getSubject().equals(refreshed.getOpenid())) {
+        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SSO 刷新后用户身份不一致");
+      }
       StoredToken replacement = new StoredToken(refreshed, nowSeconds());
       // 3. 校验新 AccessToken 通过后，才整体替换本地 Token 对。
       ActiveTokenData checked = sso.checkAccessToken(replacement.getAccessToken(), pageCode);
       if (!matches(checked, replacement, pageCode)) {
-        tokens.remove(session, tokenKey);
+        removeAuthorization(session, tokenKey);
         return null;
       }
       // 新旧 AccessToken/RefreshToken 必须作为一对原子替换。
@@ -312,11 +356,11 @@ public class PageAccessService {
       return replacement;
     } catch (ResponseStatusException e) {
       // 4. 新 Token 的绑定异常时，旧 RefreshToken 也可能已被消费，不能留给下次重放。
-      tokens.remove(session, tokenKey);
+      removeAuthorization(session, tokenKey);
       throw e;
     } catch (SsoClientException e) {
       // 5. 旧 RefreshToken 可能已被消费，先清理本地 Token，避免下次请求重放。
-      tokens.remove(session, tokenKey);
+      removeAuthorization(session, tokenKey);
       if (e.isUnavailable()) {
         throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
       }

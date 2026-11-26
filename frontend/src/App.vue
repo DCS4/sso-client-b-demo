@@ -7,6 +7,7 @@ type User = {
   userCode: string
   name: string
   companyCode?: string
+  localUserId?: string
   authMode: string
   authorizedTokenCount: number | null
 }
@@ -105,6 +106,9 @@ onMounted(refresh)
       <h2>{{ user ? '本地会话已建立' : '尚未取得页面授权' }}</h2>
       <dl v-if="user">
         <dt>用户</dt><dd>{{ user.name }}（{{ user.userCode }}）</dd>
+        <template v-if="user.localUserId">
+          <dt>本地账号编号</dt><dd>{{ user.localUserId }}</dd>
+        </template>
         <dt>模式</dt><dd>{{ user.authMode }}</dd>
         <dt>有效访问令牌数</dt><dd>{{ user.authorizedTokenCount ?? '暂无法校验' }}</dd>
       </dl>

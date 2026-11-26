@@ -211,6 +211,7 @@ public final class SsoModels {
     private String name;
     private String companyCode;
     private Integer enableStatus;
+    private String externalUserId;
 
     public String getId() {
       return id;
@@ -250,6 +251,14 @@ public final class SsoModels {
 
     public void setEnableStatus(Integer enableStatus) {
       this.enableStatus = enableStatus;
+    }
+
+    public String getExternalUserId() {
+      return externalUserId;
+    }
+
+    public void setExternalUserId(String externalUserId) {
+      this.externalUserId = externalUserId;
     }
   }
 

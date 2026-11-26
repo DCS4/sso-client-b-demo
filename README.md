@@ -1,100 +1,34 @@
-# SSO 外部系统接入示例
+# 一体化平台单点登录示例客户端
 
-这个项目演示：**怎样让一个已有业务系统接入 DCS4/yth SSO**。示例中的“B 系统”就是接入方自己的系统；Portal 提供统一登录界面，SSO 服务负责签发和校验凭据。
+本项目演示已有业务系统怎样接入一体化平台的单点登录（SSO）。用户在平台门户登录，客户端系统后端确认用户身份、建立本地登录状态。平台认证服务和登录门户由平台方提供，运行示例前需要取得可用的认证接口地址、客户端编号、客户端密钥和测试账号。
 
-技术栈为 Spring Boot 2.7.18 / JDK 8 + Vue 3，通过 HTTP 调用远端 SSO。项目不包含 SSO 服务端、账号密码登录页或权限管理后台，也不需要自己的数据库。运行完整登录流程前，需要已有的 SSO 环境和登记好的客户端。
+示例首页显示“业务系统 B”，指本项目运行起来的演示应用。以下文档中的“客户端系统”指接入方自己的业务系统。
 
-## 从哪里开始
+## 选一份文档开始
 
-| 你想做什么 | 阅读入口 |
+| 你要做的事 | 从这里开始 |
 | --- | --- |
-| 第一次运行、配置地址、排查启动问题 | [新手操作手册](docs/新手操作手册.md) |
-| 了解所有配置项和地址的对应关系、密钥全生命周期 | [配置说明](docs/配置说明.md) |
-| 分清普通单点登录和页面受控 | [认证模式详解](docs/认证模式详解.md) |
-| 先接入普通单点登录 | [普通单点登录教程](docs/tutorials/普通单点登录教程.md) |
-| 由 SSO 决定每个页面的访问权限 | [页面受控教程](docs/tutorials/页面受控教程.md) |
-| 新增业务页面并保护其数据接口 | [新增页面与 API 教程](docs/tutorials/新增页面与API教程.md) |
-| 前端需要哪些接口、怎样发起登录和退出 | [前端接入说明](frontend/README.md) |
-| 将示例迁入已有业务系统 | [外部系统接入指南](docs/外部系统接入指南.md) |
-| 查协议字段、验收步骤和耗时日志 | [SSO协议摘要](docs/SSO协议摘要.md)、[验证与验收说明](docs/验证与验收说明.md) |
-| SSO 管理方本地联调的初始化 SQL 和密钥说明 | [sql/README.md](sql/README.md) |
+| 先在本机跑通示例 | [示例客户端快速运行](docs/示例操作/示例客户端快速运行.md) |
+| 接入自己的系统，由本系统管理业务权限和账号对应关系 | [普通单点登录接入指南](docs/外部系统接入/普通单点登录接入指南.md) |
+| 接入自己的系统，由平台管理各页面的访问权限 | [页面受控接入指南](docs/外部系统接入/页面受控接入指南.md) |
+| 接入自己的系统，由平台维护平台用户与本地账号的对应关系 | [普通单点登录接入指南（平台维护外部账号绑定）](docs/外部系统接入/普通单点登录接入指南（平台维护外部账号绑定）.md) |
+| 研究认证流程、配置地址、查字段或排查问题 | [文档导航](docs/README.md#原理与参考) |
 
-## 工程目录
+## 示例提供什么
 
-```text
-sso-client-demo/
-├── README.md
-├── .env.example                         # 当前环境配置模板，真实值填写到 .env
-├── backend/
-│   ├── pom.xml
-│   └── src/
-│       ├── main/
-│       │   ├── java/com/dcs4/ssoclient/
-│       │   │   ├── DemoApplication.java  # 启动入口
-│       │   │   ├── config/              # SsoConfig、SecurityConfig、JSON 错误处理
-│       │   │   ├── sso/                 # SsoGateway、SsoClient、协议数据模型
-│       │   │   ├── auth/                # 本地授权流程、固定回调、state 和 Token
-│       │   │   └── demo/                # 首页展示接口、页面 Controller、HTML 视图
-│       │   └── resources/
-│       │       ├── application.yml      # 唯一的默认配置文件
-│       │       └── logback-spring.xml
-│       └── test/java/com/dcs4/ssoclient/ # 本地接口、授权流程与协议响应测试
-├── frontend/
-│   ├── src/
-│   │   ├── main.ts                      # 挂载 Vue
-│   │   ├── App.vue                      # 本地会话摘要和三个页面链接
-│   │   └── api.ts                       # 调用 B 接口及添加 CSRF 请求头
-│   └── vite.config.ts                   # 开发时代理 /api 和 /pages
-├── docs/
-│   ├── 新手操作手册.md
-│   ├── 配置说明.md
-│   ├── 认证模式详解.md
-│   ├── 外部系统接入指南.md
-│   ├── SSO协议摘要.md
-│   ├── 验证与验收说明.md
-│   ├── tutorials/                       # 两种模式及扩展示例的操作步骤
-│   │   ├── 普通单点登录教程.md
-│   │   ├── 页面受控教程.md
-│   │   └── 新增页面与API教程.md
-│   └── examples/                        # 可复制的教程代码，默认不参与应用构建
-├── scripts/                             # 构建前端、拷贝静态文件、打包后端
-└── sql/                                  # SSO 管理方联调脚本（SSO_ONLY / PAGE_CONTROLLED 各一份）与说明
-```
+- 后端使用 Java 8 和 Spring Boot，前端使用 Vue。后端负责固定回调、令牌交换与校验、会话和退出。前端提供演示首页和页面入口。
+- 示例包含订单查询、经营报表和运维控制台，可按平台登记选择普通单点登录或页面受控。示例使用单实例服务端会话，运行时无需为示例单独建库。
+- 本地账号查询、角色和业务数据权限由接入方按自己的系统接入。平台维护账号关系时，可启用内置账号示例，观察平台授权、客户端检查启停状态和本地会话建立的全过程。接入方可以把内置账号查询换成自己的用户服务。
 
-阅读代码时，先从 `demo/PageController.page()` 看到 `auth/PageAccessService.enter()`，再看 `auth/AuthController.callback()` 和 `completeCallback()`，最后看 `sso/SsoClient` 如何发送 HTTP 请求。`PageCatalog` 位于 `auth/`，负责页面映射；其中的三条记录是演示数据。
+## 代码怎么找
 
-`sso/`、`auth/` 和必要配置是接入参考，`demo/`、Vue 首页和 `PageView` 是展示示例。核心流程不依赖演示界面。具体移植边界见接入指南。
+| 路径 | 内容 |
+| --- | --- |
+| `backend/src/main/java/com/dcs4/ssoclient/sso/` | 客户端后端与平台之间的接口调用和数据模型 |
+| `backend/src/main/java/com/dcs4/ssoclient/auth/` | 登录、回调、页面校验、会话和退出 |
+| `backend/src/main/java/com/dcs4/ssoclient/demo/`、`frontend/` | 演示用页面和前端调用 |
+| `scripts/`、`.env.example` | 打包脚本和示例运行配置模板 |
+| `docs/examples/` | 教程中使用的扩展示例代码 |
+| `sql/` | 平台管理员在隔离环境中准备演示数据时使用的脚本 |
 
-## 快速运行
-
-准备好 JDK 8、可执行的 Maven、符合 `frontend/package.json` 要求的 Node.js，以及 SSO 管理员提供的配置。首次在仓库根目录执行：
-
-```powershell
-# 仅第一次复制；已有 .env 时直接编辑，避免覆盖真实配置。
-Copy-Item .env.example .env
-# 编辑 .env：填写 SSO 地址、client_id、client_secret、回调和认证模式。
-.\scripts\package.ps1
-java -jar backend/target/sso-client-b-demo-0.1.0-SNAPSHOT.jar
-```
-
-Linux/macOS 使用 `cp .env.example .env`、`bash scripts/package.sh`，随后执行同一个 `java -jar` 命令。默认打开 [B 系统首页](http://localhost:18085)，点击“订单查询”开始授权。SSO 管理端的系统地址登记为 `http://localhost:18085`，回调路径为 `/api/auth/callback`。
-
-首次配置、非本机访问以及前后端双进程开发的完整步骤见[新手操作手册](docs/新手操作手册.md)。本地端口只是示例，SSO 地址和回调必须使用当前环境实际可访问的地址。
-
-## 两种模式共用一个工程
-
-| 行为 | SSO_ONLY 普通单点登录 | PAGE_CONTROLLED 页面受控（默认） |
-| --- | --- | --- |
-| SSO 判断什么 | 用户身份 | 用户身份及页面权限 |
-| 向 SSO 发送页面编码 | 不发送 | 发送当前 page_code |
-| 本地 Token 保存 | 会话共用一组 | 每个页面分别保存 |
-| 本示例每次访问页面 | 后端向 SSO 校验 | 后端向 SSO 校验 |
-| 业务数据、操作和租户权限 | 接入方自行实现 | 接入方按业务需要继续实现 |
-
-在 `.env` 中设置 `SSO_AUTH_MODE`，并让 SSO 管理端的客户端模式保持一致。共用登录、回调、刷新和退出流程；模式差异由配置判断及 Token 键映射处理，无需复制两套工程。切换步骤见[认证模式详解](docs/认证模式详解.md)。
-
-## 示例范围
-
-示例使用单实例 HttpSession，固定一个后端回调，三个演示页面共用公共守卫。SSO Token 和 client_secret 保存在后端；浏览器通过自动管理的本地会话 Cookie 关联后端状态，Vue 不保存 SSO Token。首页的用户信息是本地摘要，进入页面时仍会实时校验。
-
-它提供的是接入参考代码。多实例共享会话、业务用户映射和业务权限需适配接入方现有系统。Spring Boot 2.7.18 用于保留 JDK 8 兼容性。远端协议的字段细节以 SSO 管理员提供的《SSO 接口文档》为准；本仓库提供客户端使用到的摘要。
+第一次阅读后端代码，可以从 `demo/PageController.java` 看浏览器怎样进入业务页，再沿 `auth/PageAccessService.java` 和 `auth/AuthController.java` 看登录、回调与放行。需要核对平台协议时，再看 `sso/SsoClient.java`。
